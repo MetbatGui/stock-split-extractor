@@ -104,13 +104,16 @@ class OpenDartXmlParserAdapter(StockSplitParserPort):
         for tr in trs:
             tr_text = self._clean_text(tr.get_text())
 
-            # 1. 발행주식총수 보통주식(주) 전 / 후 파싱
-            if "발행주식총수" in tr_text and "보통주식" in tr_text:
+            # 1. 발행주식총수 보통주식(주) 전 / 후 파싱 (띄어쓰기 및 조사 개입 완충 정규식 적용)
+            is_total_shares = re.search(r"발행\s*주식\s*(의)?\s*총수", tr_text)
+            is_common_shares = re.search(r"보통\s*주식", tr_text)
+
+            if is_total_shares and is_common_shares:
                 inputs = tr.find_all(class_="xforms_input")
                 share_numbers = []
                 for inp in inputs:
                     inp_text = self._clean_text(inp.get_text()).replace(",", "")
-                    if inp_text.isdigit():
+                    if inp_text.isdigit() and len(inp_text) >= 4:
                         share_numbers.append(int(inp_text))
 
                 if len(share_numbers) < 2:
@@ -118,7 +121,8 @@ class OpenDartXmlParserAdapter(StockSplitParserPort):
                     share_numbers = []
                     for num in all_numbers:
                         num_clean = num.replace(",", "")
-                        if num_clean.isdigit():
+                        # 주식 수는 일반적으로 4자리 이상의 큰 수치임 (예외적 소형 번호 필터링)
+                        if num_clean.isdigit() and len(num_clean) >= 4:
                             share_numbers.append(int(num_clean))
 
                 if len(share_numbers) >= 2:
