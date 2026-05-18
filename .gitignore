@@ -10,3 +10,6 @@ wheels/
 .venv
 /scratch
 .env
+/cache
+/data
+/secrets

@@ -6,6 +6,16 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "beautifulsoup4>=4.14.3",
+    "google-api-python-client>=2.196.0",
+    "google-auth-httplib2>=0.4.0",
+    "google-auth-oauthlib>=1.4.0",
     "lxml>=6.1.0",
+    "pydantic>=2.13.4",
     "requests>=2.34.2",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=2.1.0",
+    "ruff>=0.15.13",
 ]
