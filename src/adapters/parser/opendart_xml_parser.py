@@ -87,7 +87,8 @@ class OpenDartXmlParserAdapter(StockSplitParserPort):
             "pre_split_common_shares": None,
             "post_split_common_shares": None,
             "new_share_listing_date": None,
-            "board_resolution_date": None
+            "board_resolution_date": None,
+            "is_cancelled": False
         }
 
         try:
@@ -97,6 +98,12 @@ class OpenDartXmlParserAdapter(StockSplitParserPort):
             return result
 
         soup = BeautifulSoup(xml_content, "html.parser")
+        
+        # 문서 본문 전체에서 '철회' 또는 '부결' 단어 기반으로 철회 여부 선판별
+        full_text = self._clean_text(soup.get_text())
+        if "철회" in full_text:
+            result["is_cancelled"] = True
+
         trs = soup.find_all("tr")
 
         date_pattern = r"\d{4}-\d{2}-\d{2}"

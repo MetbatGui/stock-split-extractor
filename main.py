@@ -56,7 +56,7 @@ def main() -> None:
         start_date=start_date,
         end_date=end_date,
         keyword="주식분할결정",
-        exclude_corrections=True
+        exclude_corrections=False
     )
 
     if final_disclosures:
@@ -106,11 +106,18 @@ def main() -> None:
     print(f"{'회사명':<10} | {'분할비율':<6} | {'분할전 주식수':<14} | {'분할후 주식수':<14} | {'신주상장일':<10} | {'이사회결의일':<10}")
     print("-" * 85)
     for disc in final_disclosures[:15]:
-        ratio = f"{disc.split_ratio}배" if disc.split_ratio else "N/A"
-        before = f"{disc.pre_split_common_shares:,}" if disc.pre_split_common_shares is not None else "N/A"
-        after = f"{disc.post_split_common_shares:,}" if disc.post_split_common_shares is not None else "N/A"
-        listing = disc.new_share_listing_date or "N/A"
-        board = disc.board_resolution_date or "N/A"
+        if disc.is_cancelled:
+            ratio = "철회"
+            before = "철회"
+            after = "철회"
+            listing = "철회"
+            board = "철회"
+        else:
+            ratio = f"{disc.split_ratio}배" if disc.split_ratio else "N/A"
+            before = f"{disc.pre_split_common_shares:,}" if disc.pre_split_common_shares is not None else "N/A"
+            after = f"{disc.post_split_common_shares:,}" if disc.post_split_common_shares is not None else "N/A"
+            listing = disc.new_share_listing_date or "N/A"
+            board = disc.board_resolution_date or "N/A"
         
         print(f"{disc.corp_name:<10} | {ratio:<6} | {before:<14} | {after:<14} | {listing:<10} | {board:<10}")
 

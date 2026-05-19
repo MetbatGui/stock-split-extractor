@@ -16,6 +16,7 @@ class StockSplitDisclosure(BaseModel):
     rcept_no: str = Field(..., description="공시 접수번호 (14자리 숫자 문자열)")
     presenter: str = Field(..., description="공시 제출인")
     reg_date: str = Field(..., description="공시 접수일자 (형식: YYYY.MM.DD)")
+    is_cancelled: bool = Field(False, description="공시 철회 여부")
     
     # 2. 주식분할 상세 데이터 (XML 본문 파싱 단계)
     pre_split_common_shares: Optional[int] = Field(None, description="분할 전 보통주식 수 (주)")

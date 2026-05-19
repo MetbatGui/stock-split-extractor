@@ -71,6 +71,9 @@ class StockSplitCollectionService:
             # 아웃바운드 포트를 사용하여 공시 XML 본문 분석
             detail = self.parser_port.parse_split_info(rcept_no)
             
+            # 공시명 자체에 '철회'가 포함되어 있거나, 공시 상세 파싱 결과에서 철회로 판별된 경우
+            is_cancelled = "철회" in meta["report_nm"] or detail.get("is_cancelled", False)
+            
             # 도메인 모델로 통합 및 유효성 검증
             try:
                 disclosure_obj = StockSplitDisclosure(
@@ -79,6 +82,7 @@ class StockSplitCollectionService:
                     rcept_no=rcept_no,
                     presenter=meta["presenter"],
                     reg_date=reg_date,
+                    is_cancelled=is_cancelled,
                     pre_split_common_shares=detail["pre_split_common_shares"],
                     post_split_common_shares=detail["post_split_common_shares"],
                     new_share_listing_date=detail["new_share_listing_date"],
