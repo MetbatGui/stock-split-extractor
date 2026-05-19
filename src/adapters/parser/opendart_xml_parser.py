@@ -105,10 +105,11 @@ class OpenDartXmlParserAdapter(StockSplitParserPort):
             tr_text = self._clean_text(tr.get_text())
 
             # 1. 발행주식총수 보통주식(주) 전 / 후 파싱 (띄어쓰기 및 조사 개입 완충 정규식 적용)
+            # 이미 주식수를 정상 파싱한 경우 덮어쓰기 방지를 위해 체크
             is_total_shares = re.search(r"발행\s*주식\s*(의)?\s*총수", tr_text)
             is_common_shares = re.search(r"보통\s*주식", tr_text)
 
-            if is_total_shares and is_common_shares:
+            if is_total_shares and is_common_shares and result["pre_split_common_shares"] is None:
                 inputs = tr.find_all(class_="xforms_input")
                 share_numbers = []
                 for inp in inputs:

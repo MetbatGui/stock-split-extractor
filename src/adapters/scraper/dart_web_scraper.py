@@ -112,7 +112,7 @@ class DartWebScraperAdapter(StockSplitScraperPort):
                 # 1. 회사명 파싱 (시장 기호 예: '코 ', '유 ' 제거)
                 corp_name_raw = tds[1].get_text()
                 corp_name = self._clean_text(corp_name_raw)
-                corp_name = re.sub(r"^(코|유|넥|외)\s+", "", corp_name)
+                corp_name = re.sub(r"^(코|유|넥|외|기)\s+", "", corp_name)
 
                 # 2. 공시명 및 접수번호 파싱
                 report_td = tds[2]
