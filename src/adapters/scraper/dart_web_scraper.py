@@ -155,3 +155,57 @@ class DartWebScraperAdapter(StockSplitScraperPort):
 
         print(f"[ScraperAdapter] Scraping finished. Total: {len(all_disclosures)} items.")
         return all_disclosures
+
+    def get_history_rcp_list(self, rcp_no: str) -> List[str]:
+        """주어진 공시의 DART 뷰어 페이지에서 관련 공시(이력) 접수번호들을 추출하여 오름차순 반환합니다."""
+        url = f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={rcp_no}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        
+        try:
+            from requests.adapters import HTTPAdapter
+            from urllib3.util.retry import Retry
+
+            # 재시도 로직 설정
+            retry = Retry(
+                total=5,
+                connect=5,
+                read=5,
+                backoff_factor=1.0,
+                status_forcelist=[429, 500, 502, 503, 504]
+            )
+            adapter = HTTPAdapter(max_retries=retry)
+            self.session.mount('http://', adapter)
+            self.session.mount('https://', adapter)
+
+            # 랜덤 지연 (0.8 ~ 1.5초) - DART 사이트 차단 회피
+            sleep_time = random.uniform(0.8, 1.5)
+            time.sleep(sleep_time)
+
+            response = self.session.get(url, headers=headers, timeout=15)
+            response.raise_for_status()
+            html = response.text
+            
+            soup = BeautifulSoup(html, "html.parser")
+            found_ids = set()
+            
+            # 1. 문서목록 (History) Select Box 파싱 (id="family")
+            history_select = soup.find("select", id="family")
+            if history_select:
+                for option in history_select.find_all("option"):
+                    value = option.get("value", "")
+                    # value format: "rcpNo=2023..."
+                    match = re.search(r"rcpNo=(\d{14})", value)
+                    if match:
+                        found_ids.add(match.group(1))
+            
+            # 2. 기준 rcp_no는 항상 포함
+            found_ids.add(rcp_no)
+            
+            # 정렬하여 반환
+            return sorted(list(found_ids))
+            
+        except Exception as e:
+            print(f"[ScraperAdapter] [ERROR] Failed to get history for rcp_no {rcp_no}: {e}")
+            return [rcp_no]

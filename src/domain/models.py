@@ -18,6 +18,10 @@ class StockSplitDisclosure(BaseModel):
     reg_date: str = Field(..., description="공시 접수일자 (형식: YYYY.MM.DD)")
     is_cancelled: bool = Field(False, description="공시 철회 여부")
     
+    # 정정 관계 및 최초 원본 추적 필드
+    parent_rcept_no: Optional[str] = Field(None, description="이전(부모) 공시 접수번호 (14자리)")
+    original_reg_date: Optional[str] = Field(None, description="최초 원본 공시 접수일자 (형식: YYYY.MM.DD)")
+    
     # 2. 주식분할 상세 데이터 (XML 본문 파싱 단계)
     pre_split_common_shares: Optional[int] = Field(None, description="분할 전 보통주식 수 (주)")
     post_split_common_shares: Optional[int] = Field(None, description="분할 후 보통주식 수 (주)")
@@ -26,10 +30,13 @@ class StockSplitDisclosure(BaseModel):
 
     # 3. 유효성 검증 및 전처리 로직 (Validators)
     
-    @field_validator("reg_date")
+    @field_validator("reg_date", "original_reg_date")
     @classmethod
-    def validate_reg_date(cls, value: str) -> str:
+    def validate_reg_date(cls, value: Optional[str]) -> Optional[str]:
         """접수일자 형식(YYYY.MM.DD) 유효성 검사 및 정규화"""
+        if value is None or value == "" or value == "-":
+            return None
+            
         value_clean = value.strip()
         # YYYY.MM.DD 또는 YYYY-MM-DD 둘 다 수용 후 YYYY.MM.DD로 정규화
         if re.match(r"^\d{4}\.\d{2}\.\d{2}$", value_clean):

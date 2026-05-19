@@ -24,3 +24,10 @@ class StockSplitScraperPort(ABC):
             exclude_corrections: 기재정정 공시를 제외할지 여부
         """
         pass
+
+    @abstractmethod
+    def get_history_rcp_list(self, rcp_no: str) -> List[str]:
+        """
+        주어진 공시의 DART 뷰어 페이지에서 관련 공시(이력) 접수번호들을 추출하여 오름차순 반환합니다.
+        """
+        pass

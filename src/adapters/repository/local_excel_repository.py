@@ -36,6 +36,8 @@ class LocalExcelStockSplitRepositoryAdapter(StockSplitRepositoryPort):
                 "제출인": disc.presenter,
                 "등록일자": disc.reg_date,
                 "철회여부": "철회" if disc.is_cancelled else "정상",
+                "이전공시 접수번호": disc.parent_rcept_no or "N/A",
+                "최초공시 등록일자": disc.original_reg_date or disc.reg_date,
                 "분할전 보통주식수(주)": disc.pre_split_common_shares,
                 "분할후 보통주식수(주)": disc.post_split_common_shares,
                 "분할배율": disc.split_ratio,

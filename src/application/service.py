@@ -32,15 +32,6 @@ class StockSplitCollectionService:
         """
         특정 기간 동안의 주식분할결정 공시들을 전체 수집, 본문 파싱, 데이터 검증 후 
         영속화 저장소에 저장하는 통합 비즈니스 흐름을 오케스트레이션합니다.
-        
-        Args:
-            start_date: 시작일 (YYYYMMDD)
-            end_date: 종료일 (YYYYMMDD)
-            keyword: 검색할 서류명
-            exclude_corrections: 정정공시 제외 여부
-            
-        Returns:
-            유효성 검증을 통과한 통합 도메인 모델 객체 리스트
         """
         print(f"[Service] Pipeline started for period: {start_date} ~ {end_date}")
         
@@ -56,17 +47,62 @@ class StockSplitCollectionService:
             print("[Service] No disclosures found for the specified period.")
             return []
 
-        print(f"[Service] Found {len(disclosures_meta)} disclosures. Starting detail parsing...")
+        # 중복 방지 및 복원 적재를 위한 접수번호 기준 맵 구성
+        meta_map = {m["rcept_no"]: m for m in disclosures_meta}
+        relation_map = {}
+
+        print("[Service] Analyzing corrections and fetching history disclosures...")
+        
+        # 기재정정 공시들에 대해 이전 히스토리 공시들을 자동으로 추적하여 복원 적재
+        meta_list = list(disclosures_meta)
+        for meta in meta_list:
+            report_nm = meta.get("report_nm", "")
+            curr_rcp = meta.get("rcept_no")
+            
+            if not curr_rcp:
+                continue
+
+            # 정정 공시 혹은 철회 공시 감지 시 히스토리 이력 역추적
+            if "정정" in report_nm or "철회" in report_nm:
+                history_ids = self.scraper_port.get_history_rcp_list(curr_rcp)
+                
+                # 인접한 세대별 부모-자식 공시쌍 관계 매핑 수립
+                for i in range(1, len(history_ids)):
+                    parent = history_ids[i-1]
+                    child = history_ids[i]
+                    relation_map[child] = parent
+
+                # 누락된 이전 공시(최초 공시 등)를 메타데이터 목록에 복원 적재
+                for hist_rcp in history_ids:
+                    if hist_rcp not in meta_map:
+                        p_reg_date = f"{hist_rcp[:4]}.{hist_rcp[4:6]}.{hist_rcp[6:8]}"
+                        p_report_nm = "주식분할결정"
+                        if hist_rcp == history_ids[0]:
+                            p_report_nm = "[최초]주식분할결정"
+                            
+                        restored_meta = {
+                            "corp_name": meta["corp_name"],
+                            "report_nm": p_report_nm,
+                            "rcept_no": hist_rcp,
+                            "presenter": meta["presenter"],
+                            "reg_date": p_reg_date
+                        }
+                        meta_map[hist_rcp] = restored_meta
+                        print(f"  [Service] Restored missing parent disclosure: {meta['corp_name']} ({hist_rcp}) - Date: {p_reg_date}")
+
+        # 전체 복원 완료된 공시 목록
+        final_meta_list = list(meta_map.values())
+        print(f"[Service] Final disclosures to process (including restored): {len(final_meta_list)}")
 
         # 2. 개별 공시 상세 내용 파싱 및 도메인 모델 생성
         final_disclosures: List[StockSplitDisclosure] = []
         
-        for i, meta in enumerate(disclosures_meta, 1):
+        for i, meta in enumerate(final_meta_list, 1):
             corp_name = meta["corp_name"]
             rcept_no = meta["rcept_no"]
             reg_date = meta["reg_date"]
             
-            print(f"[Service] [{i}/{len(disclosures_meta)}] Parsing detail for {corp_name} ({rcept_no})...")
+            print(f"[Service] [{i}/{len(final_meta_list)}] Parsing detail for {corp_name} ({rcept_no})...")
             
             # 아웃바운드 포트를 사용하여 공시 XML 본문 분석
             detail = self.parser_port.parse_split_info(rcept_no)
@@ -93,7 +129,10 @@ class StockSplitCollectionService:
                 print(f"  [Service] [WARNING] Validation error (skipped): {ve}")
                 continue
 
-        # 3. 아웃바운드 포트를 사용하여 데이터 영속화
+        # 3. 정정공시 간의 최초 원본 공시일 계산 및 부모-자식 관계 맵핑 설정
+        self._resolve_original_dates(final_disclosures, relation_map)
+
+        # 4. 아웃바운드 포트를 사용하여 데이터 영속화
         if final_disclosures:
             print(f"[Service] Saving {len(final_disclosures)} valid disclosures...")
             self.repository_port.save_all(final_disclosures)
@@ -102,3 +141,34 @@ class StockSplitCollectionService:
             print("[Service] No valid disclosures to save.")
             
         return final_disclosures
+
+    def _resolve_original_dates(self, disclosures: List[StockSplitDisclosure], relation_map: dict) -> None:
+        """정정 공시들의 최초 원본 공시일을 규명하고 상위 부모 관계를 맵핑합니다."""
+        disclosure_map = {d.rcept_no: d for d in disclosures}
+        
+        for disc in disclosures:
+            curr = disc
+            visited = set()
+            root_reg_date = disc.reg_date
+            
+            # 부모 접수번호 맵핑 및 최초 공시 접수일자 추적
+            while curr.rcept_no in relation_map:
+                parent_rcp = relation_map[curr.rcept_no]
+                disc.parent_rcept_no = parent_rcp
+                
+                if parent_rcp in visited:
+                    break
+                visited.add(parent_rcp)
+                
+                if parent_rcp in disclosure_map:
+                    parent_disc = disclosure_map[parent_rcp]
+                    curr = parent_disc
+                    if parent_disc.reg_date:
+                        root_reg_date = parent_disc.reg_date
+                else:
+                    if len(parent_rcp) >= 8:
+                        p_date = f"{parent_rcp[:4]}.{parent_rcp[4:6]}.{parent_rcp[6:8]}"
+                        root_reg_date = p_date
+                    break
+            
+            disc.original_reg_date = root_reg_date
