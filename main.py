@@ -20,9 +20,9 @@ def load_env_var(var_name: str) -> str:
     return ""
 
 def main() -> None:
-    # 1. 대상 기간 설정 (최근 1년: 2025.05.18 ~ 2026.05.18)
+    # 1. 대상 기간 설정 (최근 2년: 2024.05.18 ~ 2026.05.18)
     end_date_obj = datetime(2026, 5, 18)  # 사용자의 현재 날짜 고정 참조
-    start_date_obj = end_date_obj - timedelta(days=365)
+    start_date_obj = end_date_obj - timedelta(days=730)
     
     start_date = start_date_obj.strftime("%Y%m%d")
     end_date = end_date_obj.strftime("%Y%m%d")
@@ -41,8 +41,8 @@ def main() -> None:
     # 2. 어댑터 인스턴스화
     scraper_adapter = DartWebScraperAdapter()
     parser_adapter = OpenDartXmlParserAdapter(cache_dir="cache")
-    local_json_repository = LocalJsonStockSplitRepositoryAdapter(file_path="data/stock_splits_1year.json")
-    local_excel_repository = LocalExcelStockSplitRepositoryAdapter(file_path="data/stock_splits_1year.xlsx")
+    local_json_repository = LocalJsonStockSplitRepositoryAdapter(file_path="data/stock_splits_2year.json")
+    local_excel_repository = LocalExcelStockSplitRepositoryAdapter(file_path="data/stock_splits_2year.xlsx")
 
     # 3. 비즈니스 서비스 생성 및 의존성 주입 (1차 로컬 JSON 백업 리포지토리)
     collection_service = StockSplitCollectionService(
@@ -78,7 +78,7 @@ def main() -> None:
                 # 구글 드라이브용 독립 어댑터 생성
                 gdrive_repository_adapter = GoogleDriveStockSplitRepositoryAdapter(
                     folder_id=gdrive_folder_id,
-                    file_name="stock_splits_1year.json",
+                    file_name="stock_splits_2year.json",
                     credentials_path="secrets/client_secret.json",
                     token_path="secrets/token.json"
                 )
