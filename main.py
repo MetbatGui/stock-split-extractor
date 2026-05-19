@@ -1,5 +1,6 @@
 import os
 import re
+import argparse
 from datetime import datetime, timedelta
 from adapters.scraper.dart_web_scraper import DartWebScraperAdapter
 from adapters.parser.opendart_xml_parser import OpenDartXmlParserAdapter
@@ -20,6 +21,12 @@ def load_env_var(var_name: str) -> str:
     return ""
 
 def main() -> None:
+    # 0. CLI 실행 파라미터 분석 (--refresh 지원)
+    parser = argparse.ArgumentParser(description="주식분할 공시 수집기 파이프라인")
+    parser.add_argument("--refresh", action="store_true", help="로컬 캐시 XML 파일을 무시하고 DART API에서 최신 데이터를 실시간 강제 재다운로드합니다.")
+    args, unknown = parser.parse_known_args()
+    force_refresh = args.refresh
+
     # 1. 대상 기간 설정 (최근 2년: 2024.05.18 ~ 2026.05.18)
     end_date_obj = datetime(2026, 5, 18)  # 사용자의 현재 날짜 고정 참조
     start_date_obj = end_date_obj - timedelta(days=730)
@@ -30,6 +37,8 @@ def main() -> None:
     print("=" * 60)
     print(">>> 헥사고날 기반 주식분할 공시 파이프라인 (Local JSON/Excel + GDrive SSOT)")
     print(f"[*] 대상 기간: {start_date_obj.strftime('%Y-%m-%d')} ~ {end_date_obj.strftime('%Y-%m-%d')}")
+    if force_refresh:
+        print("[!] 알림: --refresh 플래그가 감지되었습니다. 로컬 캐시를 무시하고 실시간 재수집합니다.")
     print("=" * 60)
 
     # .env 환경 변수 확인
@@ -56,7 +65,8 @@ def main() -> None:
         start_date=start_date,
         end_date=end_date,
         keyword="주식분할결정",
-        exclude_corrections=False
+        exclude_corrections=False,
+        force_refresh=force_refresh
     )
 
     if final_disclosures:

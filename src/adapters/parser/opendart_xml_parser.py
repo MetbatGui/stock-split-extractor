@@ -35,12 +35,12 @@ class OpenDartXmlParserAdapter(StockSplitParserPort):
             return ""
         return re.sub(r"\s+", " ", text).strip()
 
-    def _get_xml_content(self, rcept_no: str) -> str:
+    def _get_xml_content(self, rcept_no: str, force_refresh: bool = False) -> str:
         """로컬 캐시를 조회하거나 OpenDART API를 호출하여 XML 원본 본문을 가져옵니다."""
         xml_path = os.path.join(self.cache_dir, f"{rcept_no}.xml")
         
-        # 1. 로컬 캐시 확인
-        if os.path.exists(xml_path):
+        # 1. 로컬 캐시 확인 (force_refresh 가 False 이고 파일이 있을 때만 로드)
+        if not force_refresh and os.path.exists(xml_path):
             with open(xml_path, "r", encoding="utf-8", errors="replace") as f:
                 return f.read()
 
@@ -81,7 +81,7 @@ class OpenDartXmlParserAdapter(StockSplitParserPort):
             err_head = response.content.decode("utf-8", errors="replace")[:200]
             raise RuntimeError(f"Failed to parse downloaded content as ZIP. Response starts with: {err_head}")
 
-    def parse_split_info(self, rcept_no: str) -> Dict[str, Any]:
+    def parse_split_info(self, rcept_no: str, force_refresh: bool = False) -> Dict[str, Any]:
         """주식분할결정 XML 공시에서 4대 수치 지표를 강건하게 파싱합니다."""
         result: Dict[str, Any] = {
             "pre_split_common_shares": None,
@@ -92,7 +92,7 @@ class OpenDartXmlParserAdapter(StockSplitParserPort):
         }
 
         try:
-            xml_content = self._get_xml_content(rcept_no)
+            xml_content = self._get_xml_content(rcept_no, force_refresh=force_refresh)
         except Exception as e:
             print(f"[ParserAdapter] Error fetching document {rcept_no}: {e}")
             return result

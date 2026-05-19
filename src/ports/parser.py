@@ -7,12 +7,13 @@ class StockSplitParserPort(ABC):
     """
     
     @abstractmethod
-    def parse_split_info(self, rcept_no: str) -> Dict[str, Any]:
+    def parse_split_info(self, rcept_no: str, force_refresh: bool = False) -> Dict[str, Any]:
         """
         공시 접수번호를 기반으로 본문 XML을 다운로드 및 분석하여 주식분할 상세 수치 데이터를 반환합니다.
         
         Args:
             rcept_no: DART 공시 접수번호 (14자리 숫자)
+            force_refresh: True 설정 시 로컬 캐시를 무시하고 실시간으로 DART API를 새로 재수집합니다.
             
         Returns:
             {

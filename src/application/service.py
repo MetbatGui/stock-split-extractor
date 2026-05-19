@@ -27,7 +27,8 @@ class StockSplitCollectionService:
         start_date: str, 
         end_date: str, 
         keyword: str = "주식분할결정",
-        exclude_corrections: bool = True
+        exclude_corrections: bool = True,
+        force_refresh: bool = False
     ) -> List[StockSplitDisclosure]:
         """
         특정 기간 동안의 주식분할결정 공시들을 전체 수집, 본문 파싱, 데이터 검증 후 
@@ -105,7 +106,7 @@ class StockSplitCollectionService:
             print(f"[Service] [{i}/{len(final_meta_list)}] Parsing detail for {corp_name} ({rcept_no})...")
             
             # 아웃바운드 포트를 사용하여 공시 XML 본문 분석
-            detail = self.parser_port.parse_split_info(rcept_no)
+            detail = self.parser_port.parse_split_info(rcept_no, force_refresh=force_refresh)
             
             # 공시명 자체에 '철회'가 포함되어 있거나, 공시 상세 파싱 결과에서 철회로 판별된 경우
             is_cancelled = "철회" in meta["report_nm"] or detail.get("is_cancelled", False)
