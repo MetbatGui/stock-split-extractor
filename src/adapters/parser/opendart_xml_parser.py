@@ -104,7 +104,13 @@ class OpenDartXmlParserAdapter(StockSplitParserPort):
         if "철회" in full_text:
             result["is_cancelled"] = True
 
-        trs = soup.find_all("tr")
+        # 정정 요약표가 상세 데이터를 오염시키는 현상을 원천 방지하기 위해,
+        # 본래 제명이 선언되는 xforms_title div를 탐색하여 그 이후의 tr 요소들만 타겟팅합니다.
+        title_div = soup.find(class_="xforms_title")
+        if title_div:
+            trs = title_div.find_all_next("tr")
+        else:
+            trs = soup.find_all("tr")
 
         date_pattern = r"\d{4}-\d{2}-\d{2}"
 
