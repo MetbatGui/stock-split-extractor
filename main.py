@@ -41,8 +41,8 @@ def main() -> None:
     # 2. 어댑터 인스턴스화
     scraper_adapter = DartWebScraperAdapter()
     parser_adapter = OpenDartXmlParserAdapter(cache_dir="cache")
-    local_json_repository = LocalJsonStockSplitRepositoryAdapter(file_path="data/stock_splits_2year.json")
-    local_excel_repository = LocalExcelStockSplitRepositoryAdapter(file_path="data/stock_splits_2year.xlsx")
+    local_json_repository = LocalJsonStockSplitRepositoryAdapter(file_path="data/stock_splits_with_history.json")
+    local_excel_repository = LocalExcelStockSplitRepositoryAdapter(file_path="data/stock_splits_with_history.xlsx")
 
     # 3. 비즈니스 서비스 생성 및 의존성 주입 (1차 로컬 JSON 백업 리포지토리)
     collection_service = StockSplitCollectionService(
@@ -78,7 +78,7 @@ def main() -> None:
                 # 구글 드라이브용 독립 어댑터 생성
                 gdrive_repository_adapter = GoogleDriveStockSplitRepositoryAdapter(
                     folder_id=gdrive_folder_id,
-                    file_name="stock_splits_2year.json",
+                    file_name="stock_splits_with_history.json",
                     credentials_path="secrets/client_secret.json",
                     token_path="secrets/token.json"
                 )

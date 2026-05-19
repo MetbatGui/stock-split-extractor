@@ -29,15 +29,20 @@ class LocalExcelStockSplitRepositoryAdapter(StockSplitRepositoryPort):
         # 1. 도메인 모델 리스트를 사전 리스트 형식으로 전환
         raw_data = []
         for disc in disclosures:
+            # 기재정정 여부 판별
+            is_correction = "[기재정정]" if "정정" in disc.report_nm else ""
+            
+            # 이전공시번호 판별 (최초공시이거나 이전번호가 없으면 비우기)
+            parent_no = disc.parent_rcept_no if (disc.parent_rcept_no and "정정" in disc.report_nm) else ""
+
             raw_data.append({
                 "회사명": disc.corp_name,
-                "공시명": disc.report_nm,
-                "접수번호": disc.rcept_no,
-                "제출인": disc.presenter,
-                "등록일자": disc.reg_date,
+                "기재정정": is_correction,
                 "철회여부": "철회" if disc.is_cancelled else "정상",
-                "이전공시 접수번호": disc.parent_rcept_no or "N/A",
+                "등록일자": disc.reg_date,
                 "최초공시 등록일자": disc.original_reg_date or disc.reg_date,
+                "공시번호": disc.rcept_no,
+                "이전공시번호": parent_no,
                 "분할전 보통주식수(주)": disc.pre_split_common_shares,
                 "분할후 보통주식수(주)": disc.post_split_common_shares,
                 "분할배율": disc.split_ratio,
