@@ -21,22 +21,24 @@ def load_env_var(var_name: str) -> str:
     return ""
 
 def main() -> None:
-    # 0. CLI 실행 파라미터 분석 (--refresh 지원)
+    # 0. CLI 실행 파라미터 분석 (--refresh, --days 지원)
     parser = argparse.ArgumentParser(description="주식분할 공시 수집기 파이프라인")
     parser.add_argument("--refresh", action="store_true", help="로컬 캐시 XML 파일을 무시하고 DART API에서 최신 데이터를 실시간 강제 재다운로드합니다.")
+    parser.add_argument("--days", type=int, default=7, help="수집할 최근 일수 범위를 지정합니다 (기본값: 7일)")
     args, unknown = parser.parse_known_args()
     force_refresh = args.refresh
+    days_range = args.days
 
-    # 1. 대상 기간 설정 (최근 2년: 2024.05.18 ~ 2026.05.18)
-    end_date_obj = datetime(2026, 5, 18)  # 사용자의 현재 날짜 고정 참조
-    start_date_obj = end_date_obj - timedelta(days=730)
+    # 1. 대상 기간 설정 (실행일 기준 동적 범위 설정, 기본 최근 7일)
+    end_date_obj = datetime.now()
+    start_date_obj = end_date_obj - timedelta(days=days_range)
     
     start_date = start_date_obj.strftime("%Y%m%d")
     end_date = end_date_obj.strftime("%Y%m%d")
     
     print("=" * 60)
     print(">>> 헥사고날 기반 주식분할 공시 파이프라인 (Local JSON/Excel + GDrive SSOT)")
-    print(f"[*] 대상 기간: {start_date_obj.strftime('%Y-%m-%d')} ~ {end_date_obj.strftime('%Y-%m-%d')}")
+    print(f"[*] 대상 기간: {start_date_obj.strftime('%Y-%m-%d')} ~ {end_date_obj.strftime('%Y-%m-%d')} ({days_range}일간)")
     if force_refresh:
         print("[!] 알림: --refresh 플래그가 감지되었습니다. 로컬 캐시를 무시하고 실시간 재수집합니다.")
     print("=" * 60)
@@ -53,6 +55,38 @@ def main() -> None:
     parser_adapter = OpenDartXmlParserAdapter(cache_dir="cache")
     local_json_repository = LocalJsonStockSplitRepositoryAdapter(file_path="data/stock_splits_with_history.json")
     local_excel_repository = LocalExcelStockSplitRepositoryAdapter(file_path="data/stock_splits_with_history.xlsx")
+
+    # 2-A. 수집 시작 전 구글 드라이브 스마트 대조 다운로드 실행 (구글 드라이브 SSOT 확보)
+    gdrive_repository_adapter = None
+    if gdrive_folder_id:
+        print("\n" + "-" * 60)
+        print("[SSOT] 구글 드라이브 스마트 다운로드 동기화를 확인합니다...")
+        try:
+            gdrive_repository_adapter = GoogleDriveStockSplitRepositoryAdapter(
+                folder_id=gdrive_folder_id,
+                file_name="stock_splits_with_history.json",
+                credentials_path="secrets/client_secret.json",
+                token_path="secrets/token.json"
+            )
+            
+            # (1) 종합 JSON 데이터베이스 스마트 다운로드
+            gdrive_repository_adapter.download_file_if_newer(
+                remote_name="stock_splits_with_history.json",
+                local_path="data/stock_splits_with_history.json"
+            )
+            
+            # (2) 현년(current_year) 엑셀 시트 스마트 다운로드
+            current_year = datetime.now().year
+            current_excel_name = f"액면분할({current_year}년).xlsx"
+            gdrive_repository_adapter.download_file_if_newer(
+                remote_name=current_excel_name,
+                local_path=f"data/{current_excel_name}"
+            )
+            
+            print("[SSOT] 스마트 다운로드 동기화 체크 완료!")
+        except Exception as e:
+            print(f"[SSOT] [WARNING] 스마트 다운로드 동기화 진행 중 오류 발생 (로컬 데이터를 기준으로 계속 가동합니다): {e}")
+        print("-" * 60)
 
     # 3. 비즈니스 서비스 생성 및 의존성 주입 (1차 로컬 JSON 백업 리포지토리)
     collection_service = StockSplitCollectionService(
@@ -86,24 +120,26 @@ def main() -> None:
             print("[SSOT] 구글 드라이브 클라우드 업로드 동기화를 시작합니다...")
             
             try:
-                # 구글 드라이브용 독립 어댑터 생성
-                gdrive_repository_adapter = GoogleDriveStockSplitRepositoryAdapter(
-                    folder_id=gdrive_folder_id,
-                    file_name="stock_splits_with_history.json",
-                    credentials_path="secrets/client_secret.json",
-                    token_path="secrets/token.json"
-                )
+                # 상단에서 생성된 어댑터가 없다면 새로 생성
+                if gdrive_repository_adapter is None:
+                    gdrive_repository_adapter = GoogleDriveStockSplitRepositoryAdapter(
+                        folder_id=gdrive_folder_id,
+                        file_name="stock_splits_with_history.json",
+                        credentials_path="secrets/client_secret.json",
+                        token_path="secrets/token.json"
+                    )
                 
                 # 6-A. 종합 JSON 데이터베이스 동기화
                 gdrive_repository_adapter.save_all(final_disclosures)
                 
                 # 6-B. 로컬 디스크에 재생성된 엑셀 파일들 목록 동적 탐색하여 클라우드 업로드
                 print("[SSOT] 로컬 엑셀 파일 동기화를 진행합니다...")
+                current_year = datetime.now().year
                 excel_files = [
                     ("data/stock_splits_with_history.xlsx", "stock_splits_with_history.xlsx"),
-                    ("data/액면분할(2026년).xlsx", "액면분할(2026년).xlsx"),
-                    ("data/액면분할(2025년).xlsx", "액면분할(2025년).xlsx"),
-                    ("data/액면분할(2024년).xlsx", "액면분할(2024년).xlsx")
+                    (f"data/액면분할({current_year}년).xlsx", f"액면분할({current_year}년).xlsx"),
+                    (f"data/액면분할({current_year - 1}년).xlsx", f"액면분할({current_year - 1}년).xlsx"),
+                    (f"data/액면분할({current_year - 2}년).xlsx", f"액면분할({current_year - 2}년).xlsx")
                 ]
                 
                 for local_path, remote_name in excel_files:

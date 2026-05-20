@@ -3,12 +3,14 @@ import json
 import logging
 import tempfile
 from typing import List, Optional, Any
+from datetime import datetime, timezone
 from google.oauth2.credentials import Credentials  # type: ignore
 from google_auth_oauthlib.flow import InstalledAppFlow  # type: ignore
 from google.auth.transport.requests import Request  # type: ignore
 import io
 from googleapiclient.discovery import build  # type: ignore
-from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload  # type: ignore
+from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload, MediaIoBaseDownload  # type: ignore
+
 
 
 from domain.models import StockSplitDisclosure
@@ -214,4 +216,99 @@ class GoogleDriveStockSplitRepositoryAdapter(StockSplitRepositoryPort):
         except Exception as e:
             self.logger.error(f"[GDriveRepo] Failed to upload local file '{remote_name}': {e}")
             raise e
+
+    def load_all(self) -> List[StockSplitDisclosure]:
+        """구글 드라이브에서의 직접 로드 기능은 현재 미지원하므로 빈 리스트를 반환합니다."""
+        self.logger.warning("[GDriveRepo] load_all is not supported directly. Returning empty list.")
+        return []
+
+    def _get_file_metadata(self, file_name: str) -> Optional[dict]:
+        """지정한 폴더 내에 동일한 이름을 가진 파일의 메타데이터(id, modifiedTime)를 조회합니다."""
+        escaped_name = file_name.replace("'", "\\'")
+        query = f"name='{escaped_name}' and '{self.folder_id}' in parents and trashed=false"
+        
+        try:
+            results = self.service.files().list(
+                q=query,
+                fields="files(id, name, modifiedTime)",
+                pageSize=1
+            ).execute()
+            
+            files = results.get('files', [])
+            return files[0] if files else None
+        except Exception as e:
+            self.logger.warning(f"[GDriveRepo] Query error during file metadata search: {e}")
+            return None
+
+    def download_file_if_newer(self, remote_name: str, local_path: str) -> bool:
+        """
+        구글 드라이브와 로컬 파일의 마지막 수정 시각을 대조하여,
+        구글 드라이브 상의 파일이 더 새롭거나 로컬에 파일이 존재하지 않는 경우에만 다운로드합니다.
+        """
+        if not self.folder_id:
+            self.logger.warning("[GDriveRepo] GOOGLE_STOCK_SPLIT_FOLDER_ID is empty. Smart sync download skipped.")
+            return False
+
+        # 1. 구글 드라이브 메타데이터 조회
+        metadata = self._get_file_metadata(remote_name)
+        if not metadata:
+            self.logger.info(f"[GDriveRepo] No remote file found for '{remote_name}'. Skipping download.")
+            return False
+
+        remote_file_id = metadata['id']
+        remote_modified_str = metadata['modifiedTime']
+        
+        if remote_modified_str.endswith('Z'):
+            remote_modified_str = remote_modified_str[:-1] + '+00:00'
+        remote_mtime = datetime.fromisoformat(remote_modified_str)
+
+        # 2. 로컬 파일 수정 시각 조회 및 비교
+        need_download = False
+        if not os.path.exists(local_path):
+            self.logger.info(f"[GDriveRepo] Local file '{local_path}' does not exist. Need download.")
+            need_download = True
+        else:
+            local_mtime_ts = os.path.getmtime(local_path)
+            local_mtime = datetime.fromtimestamp(local_mtime_ts, tz=timezone.utc)
+            
+            if remote_mtime > local_mtime:
+                self.logger.info(f"[GDriveRepo] Remote file '{remote_name}' (Modified: {remote_mtime}) is newer than Local file (Modified: {local_mtime}). Need download.")
+                need_download = True
+            else:
+                self.logger.info(f"[GDriveRepo] Local file '{local_path}' is up-to-date. Skipping download.")
+
+        # 3. 필요 시 실시간 다운로드 실행
+        if need_download:
+            try:
+                # 부모 디렉토리 생성
+                dir_name = os.path.dirname(local_path)
+                if dir_name:
+                    os.makedirs(dir_name, exist_ok=True)
+
+                self.logger.info(f"[GDriveRepo] Starting download: {remote_name} -> {local_path} ...")
+                request = self.service.files().get_media(fileId=remote_file_id)
+                fh = io.BytesIO()
+                downloader = MediaIoBaseDownload(fh, request)
+                
+                done = False
+                while done is False:
+                    status, done = downloader.next_chunk()
+                
+                fh.seek(0)
+                with open(local_path, 'wb') as f:
+                    f.write(fh.read())
+                
+                # 파일 타임스탬프 동기화
+                remote_timestamp = remote_mtime.timestamp()
+                os.utime(local_path, (remote_timestamp, remote_timestamp))
+                
+                self.logger.info(f"[GDriveRepo] Successfully DOWNLOADED '{remote_name}' to '{local_path}' and synchronized modifiedTime.")
+                return True
+            except Exception as e:
+                self.logger.error(f"[GDriveRepo] Failed to download file '{remote_name}': {e}")
+                return False
+        
+        return False
+
+
 
