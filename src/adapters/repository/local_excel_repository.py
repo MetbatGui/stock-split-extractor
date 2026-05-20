@@ -2,12 +2,12 @@ import os
 import pandas as pd  # type: ignore
 from typing import List
 from domain.models import StockSplitDisclosure
-from ports.repository import StockSplitRepositoryPort
+from ports.repository import StockSplitWriterPort
 
-class LocalExcelStockSplitRepositoryAdapter(StockSplitRepositoryPort):
+class LocalExcelStockSplitRepositoryAdapter(StockSplitWriterPort):
     """
     수집 완료된 도메인 모델 데이터를 프리미엄 스타일이 적용된 
-    Excel 파일 형태로 로컬 디스크에 저장하는 어댑터 (StockSplitRepositoryPort 구현체)
+    Excel 파일 형태로 로컬 디스크에 저장하는 어댑터 (StockSplitWriterPort 구현체)
     """
 
     def __init__(self, file_path: str = "data/stock_splits_1year.xlsx") -> None:
@@ -108,9 +108,6 @@ class LocalExcelStockSplitRepositoryAdapter(StockSplitRepositoryPort):
             print(f"[ExcelAdapter] [ERROR] Failed to save excel file {target_path}: {excel_err}")
             raise excel_err
 
-    def load_all(self) -> List[StockSplitDisclosure]:
-        """Excel 어댑터는 로드 기능을 지원하지 않으므로 빈 리스트를 반환합니다."""
-        print("[ExcelAdapter] load_all is not implemented. Returning empty list.")
-        return []
+    # Excel 리포지토리는 ISP 원칙에 따라 읽기(ReaderPort) 기능을 별도 계약하지 않아 load_all을 구현하지 않습니다.
 
 

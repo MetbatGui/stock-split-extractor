@@ -2,12 +2,12 @@ import os
 import json
 from typing import List
 from domain.models import StockSplitDisclosure
-from ports.repository import StockSplitRepositoryPort
+from ports.repository import StockSplitReaderPort, StockSplitWriterPort
 
-class LocalJsonStockSplitRepositoryAdapter(StockSplitRepositoryPort):
+class LocalJsonStockSplitRepositoryAdapter(StockSplitReaderPort, StockSplitWriterPort):
     """
     수집 완료된 도메인 모델 데이터를 로컬 디스크 파일시스템에 
-    UTF-8 JSON 파일 형태로 저장하는 어댑터 (StockSplitRepositoryPort 구현체)
+    UTF-8 JSON 파일 형태로 저장하고 로드하는 어댑터 (Reader 및 Writer 구현체)
     """
 
     def __init__(self, file_path: str = "data/stock_splits_1year.json") -> None:

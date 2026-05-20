@@ -14,12 +14,12 @@ from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload, MediaIoBase
 
 
 from domain.models import StockSplitDisclosure
-from ports.repository import StockSplitRepositoryPort
+from ports.repository import StockSplitWriterPort, CloudSyncPort
 
-class GoogleDriveStockSplitRepositoryAdapter(StockSplitRepositoryPort):
+class GoogleDriveStockSplitRepositoryAdapter(StockSplitWriterPort, CloudSyncPort):
     """
     수집 완료된 도메인 모델 데이터를 구글 드라이브 (SSOT)에 
-    JSON 파일 형태로 저장하고 동기화 업로드하는 어댑터 (StockSplitRepositoryPort 구현체)
+    JSON 파일 형태로 저장하고 동기화 업로드하는 어댑터 (Writer 및 CloudSync 구현체)
     """
     
     SCOPES = ['https://www.googleapis.com/auth/drive']
@@ -176,7 +176,7 @@ class GoogleDriveStockSplitRepositoryAdapter(StockSplitRepositoryPort):
             raise upload_err
 
 
-    def upload_local_file(self, local_path: str, remote_name: str, mime_type: str) -> None:
+    def sync_up_file(self, local_path: str, remote_name: str, mime_type: str) -> None:
         """
         로컬에 존재하는 임의의 파일(예: 엑셀, JSON 등)을 구글 드라이브의 대상 폴더에 업로드합니다.
         기존 동일한 이름의 파일이 있으면 자동으로 찾아 덮어씁니다.
@@ -217,10 +217,7 @@ class GoogleDriveStockSplitRepositoryAdapter(StockSplitRepositoryPort):
             self.logger.error(f"[GDriveRepo] Failed to upload local file '{remote_name}': {e}")
             raise e
 
-    def load_all(self) -> List[StockSplitDisclosure]:
-        """구글 드라이브에서의 직접 로드 기능은 현재 미지원하므로 빈 리스트를 반환합니다."""
-        self.logger.warning("[GDriveRepo] load_all is not supported directly. Returning empty list.")
-        return []
+    # 구글 드라이브 어댑터는 ISP 원칙에 따라 읽기(ReaderPort) 기능을 별도 계약하지 않아 load_all을 강제 구현하지 않습니다.
 
     def _get_file_metadata(self, file_name: str) -> Optional[dict]:
         """지정한 폴더 내에 동일한 이름을 가진 파일의 메타데이터(id, modifiedTime)를 조회합니다."""
@@ -240,7 +237,7 @@ class GoogleDriveStockSplitRepositoryAdapter(StockSplitRepositoryPort):
             self.logger.warning(f"[GDriveRepo] Query error during file metadata search: {e}")
             return None
 
-    def download_file_if_newer(self, remote_name: str, local_path: str) -> bool:
+    def sync_down_if_newer(self, remote_name: str, local_path: str) -> bool:
         """
         구글 드라이브와 로컬 파일의 마지막 수정 시각을 대조하여,
         구글 드라이브 상의 파일이 더 새롭거나 로컬에 파일이 존재하지 않는 경우에만 다운로드합니다.

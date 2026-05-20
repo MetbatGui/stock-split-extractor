@@ -7,6 +7,7 @@ from adapters.parser.opendart_xml_parser import OpenDartXmlParserAdapter
 from adapters.repository.local_json_repository import LocalJsonStockSplitRepositoryAdapter
 from adapters.repository.local_excel_repository import LocalExcelStockSplitRepositoryAdapter
 from adapters.repository.google_drive_repository import GoogleDriveStockSplitRepositoryAdapter
+from adapters.repository.composite_repository import CompositeStockSplitWriterAdapter
 from application.service import StockSplitCollectionService
 
 def load_env_var(var_name: str) -> str:
@@ -49,18 +50,14 @@ def main() -> None:
         print("[WARNING] .env 파일에 GOOGLE_STOCK_SPLIT_FOLDER_ID가 정의되지 않았습니다.")
         print("          구글 드라이브 동기화를 이용하려면 .env에 GOOGLE_STOCK_SPLIT_FOLDER_ID 값을 추가해 주세요.")
 
-
-    # 2. 어댑터 인스턴스화
+    # 2. 개별 어댑터 인스턴스화
     scraper_adapter = DartWebScraperAdapter()
     parser_adapter = OpenDartXmlParserAdapter(cache_dir="cache")
     local_json_repository = LocalJsonStockSplitRepositoryAdapter(file_path="data/stock_splits_with_history.json")
     local_excel_repository = LocalExcelStockSplitRepositoryAdapter(file_path="data/stock_splits_with_history.xlsx")
 
-    # 2-A. 수집 시작 전 구글 드라이브 스마트 대조 다운로드 실행 (구글 드라이브 SSOT 확보)
     gdrive_repository_adapter = None
     if gdrive_folder_id:
-        print("\n" + "-" * 60)
-        print("[SSOT] 구글 드라이브 스마트 다운로드 동기화를 확인합니다...")
         try:
             gdrive_repository_adapter = GoogleDriveStockSplitRepositoryAdapter(
                 folder_id=gdrive_folder_id,
@@ -68,34 +65,25 @@ def main() -> None:
                 credentials_path="secrets/client_secret.json",
                 token_path="secrets/token.json"
             )
-            
-            # (1) 종합 JSON 데이터베이스 스마트 다운로드
-            gdrive_repository_adapter.download_file_if_newer(
-                remote_name="stock_splits_with_history.json",
-                local_path="data/stock_splits_with_history.json"
-            )
-            
-            # (2) 현년(current_year) 엑셀 시트 스마트 다운로드
-            current_year = datetime.now().year
-            current_excel_name = f"액면분할({current_year}년).xlsx"
-            gdrive_repository_adapter.download_file_if_newer(
-                remote_name=current_excel_name,
-                local_path=f"data/{current_excel_name}"
-            )
-            
-            print("[SSOT] 스마트 다운로드 동기화 체크 완료!")
         except Exception as e:
-            print(f"[SSOT] [WARNING] 스마트 다운로드 동기화 진행 중 오류 발생 (로컬 데이터를 기준으로 계속 가동합니다): {e}")
-        print("-" * 60)
+            print(f"[SSOT] [WARNING] 구글 드라이브 인증 초기화 실패 (로컬 우선 가동): {e}")
 
-    # 3. 비즈니스 서비스 생성 및 의존성 주입 (1차 로컬 JSON 백업 리포지토리)
+    # 3. Composite Writer 구성 (다중 영속화 캡슐화)
+    writers = [local_json_repository, local_excel_repository]
+    if gdrive_repository_adapter:
+        writers.append(gdrive_repository_adapter)
+    composite_writer = CompositeStockSplitWriterAdapter(writers=writers)
+
+    # 4. 비즈니스 서비스 생성 및 포트 결합 (DIP 완성)
     collection_service = StockSplitCollectionService(
         scraper_port=scraper_adapter,
         parser_port=parser_adapter,
-        repository_port=local_json_repository
+        reader_port=local_json_repository,
+        writer_port=composite_writer,
+        sync_port=gdrive_repository_adapter
     )
 
-    # 4. 1차 로컬 JSON 백업 파이프라인 가동 (안정적 데이터 수집 확보)
+    # 5. 파이프라인 통합 가동 (단 1회 호출로 오케스트레이션 수행)
     final_disclosures = collection_service.collect_splits_for_period(
         start_date=start_date,
         end_date=end_date,
@@ -104,62 +92,7 @@ def main() -> None:
         force_refresh=force_refresh
     )
 
-    if final_disclosures:
-        # 5. 로컬 엑셀 파일 추가 영속화 (책임 분리형 어댑터 개별 호출)
-        print("\n" + "-" * 60)
-        print("[Excel] 로컬 엑셀 파일 생성을 시작합니다...")
-        try:
-            local_excel_repository.save_all(final_disclosures)
-        except Exception as e:
-            print(f"[Excel] [ERROR] 엑셀 생성 실패: {e}")
-        print("-" * 60)
-
-        # 6. 2차 구글 드라이브 SSOT 업로드 동기화 (종합 JSON + 엑셀 파일들 자동 동기화)
-        if gdrive_folder_id:
-            print("\n" + "-" * 60)
-            print("[SSOT] 구글 드라이브 클라우드 업로드 동기화를 시작합니다...")
-            
-            try:
-                # 상단에서 생성된 어댑터가 없다면 새로 생성
-                if gdrive_repository_adapter is None:
-                    gdrive_repository_adapter = GoogleDriveStockSplitRepositoryAdapter(
-                        folder_id=gdrive_folder_id,
-                        file_name="stock_splits_with_history.json",
-                        credentials_path="secrets/client_secret.json",
-                        token_path="secrets/token.json"
-                    )
-                
-                # 6-A. 종합 JSON 데이터베이스 동기화
-                gdrive_repository_adapter.save_all(final_disclosures)
-                
-                # 6-B. 로컬 디스크에 재생성된 엑셀 파일들 목록 동적 탐색하여 클라우드 업로드
-                print("[SSOT] 로컬 엑셀 파일 동기화를 진행합니다...")
-                current_year = datetime.now().year
-                excel_files = [
-                    ("data/stock_splits_with_history.xlsx", "stock_splits_with_history.xlsx"),
-                    (f"data/액면분할({current_year}년).xlsx", f"액면분할({current_year}년).xlsx"),
-                    (f"data/액면분할({current_year - 1}년).xlsx", f"액면분할({current_year - 1}년).xlsx"),
-                    (f"data/액면분할({current_year - 2}년).xlsx", f"액면분할({current_year - 2}년).xlsx")
-                ]
-                
-                for local_path, remote_name in excel_files:
-                    if os.path.exists(local_path):
-                        # 엑셀 MimeType: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
-                        gdrive_repository_adapter.upload_local_file(
-                            local_path=local_path,
-                            remote_name=remote_name,
-                            mime_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                        )
-                
-                print("[SSOT] 구글 드라이브 모든 파일(JSON/Excel) 동기화 완료!")
-            except FileNotFoundError as fnf_err:
-                print(f"\n[SSOT] [ERROR] 구글 드라이브 업로드 실패: {fnf_err}")
-                print("        ➡️ 'secrets/client_secret.json' 파일이 필요합니다.")
-            except Exception as sync_err:
-                print(f"\n[SSOT] [ERROR] 구글 드라이브 동기화 중 에러가 발생했습니다: {sync_err}")
-            print("-" * 60)
-
-    # 7. 최종 수집 리포트 터미널 출력
+    # 6. 최종 수집 리포트 터미널 출력
     print("\n" + "=" * 60)
     print(f"[SUCCESS] 파이프라인 가동 완료: 총 {len(final_disclosures)}건 처리")
     print("=" * 60)
