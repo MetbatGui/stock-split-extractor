@@ -27,3 +27,26 @@ class LocalJsonStockSplitRepositoryAdapter(StockSplitRepositoryPort):
             json.dump(data_to_save, f, ensure_ascii=False, indent=4)
             
         print(f"[RepositoryAdapter] Successfully saved {len(disclosures)} disclosures to {self.file_path}")
+
+    def load_all(self) -> List[StockSplitDisclosure]:
+        """
+        저장된 JSON 파일을 읽어 도메인 모델 리스트로 역직렬화합니다.
+        """
+        if not os.path.exists(self.file_path):
+            print(f"[RepositoryAdapter] No existing database file found at {self.file_path}. Returning empty list.")
+            return []
+            
+        try:
+            with open(self.file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            
+            disclosures = []
+            for item in data:
+                disclosures.append(StockSplitDisclosure(**item))
+            
+            print(f"[RepositoryAdapter] Successfully loaded {len(disclosures)} disclosures from {self.file_path}")
+            return disclosures
+        except Exception as e:
+            print(f"[RepositoryAdapter] [ERROR] Failed to load disclosures: {e}")
+            return []
+

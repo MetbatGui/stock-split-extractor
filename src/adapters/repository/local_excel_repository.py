@@ -108,3 +108,9 @@ class LocalExcelStockSplitRepositoryAdapter(StockSplitRepositoryPort):
             print(f"[ExcelAdapter] [ERROR] Failed to save excel file {target_path}: {excel_err}")
             raise excel_err
 
+    def load_all(self) -> List[StockSplitDisclosure]:
+        """Excel 어댑터는 로드 기능을 지원하지 않으므로 빈 리스트를 반환합니다."""
+        print("[ExcelAdapter] load_all is not implemented. Returning empty list.")
+        return []
+
+

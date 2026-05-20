@@ -13,3 +13,11 @@ class StockSplitRepositoryPort(ABC):
         도메인 객체 리스트를 저장소(JSON, DB 등)에 영속화합니다.
         """
         pass
+
+    @abstractmethod
+    def load_all(self) -> List[StockSplitDisclosure]:
+        """
+        저장소(JSON 등)에 보관된 기존 도메인 객체 리스트를 불러옵니다.
+        """
+        pass
+

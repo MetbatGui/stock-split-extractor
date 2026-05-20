@@ -130,18 +130,35 @@ class StockSplitCollectionService:
                 print(f"  [Service] [WARNING] Validation error (skipped): {ve}")
                 continue
 
-        # 3. 정정공시 간의 최초 원본 공시일 계산 및 부모-자식 관계 맵핑 설정
+        # 3. 정정공시 간의 최초 원본 공시일 계산 및 부모-자식 관계 맵핑 설정 (신규 수집 대상)
         self._resolve_original_dates(final_disclosures, relation_map)
 
-        # 4. 아웃바운드 포트를 사용하여 데이터 영속화
-        if final_disclosures:
-            print(f"[Service] Saving {len(final_disclosures)} valid disclosures...")
-            self.repository_port.save_all(final_disclosures)
+        # 4. 기존 데이터베이스 로드 (증분 수집 및 머지 지원)
+        existing_disclosures = []
+        try:
+            existing_disclosures = self.repository_port.load_all()
+        except Exception as e:
+            print(f"[Service] [WARNING] Failed to load existing disclosures: {e}")
+
+        # 5. 기존 데이터와 신규 수집 데이터 병합 (접수번호 기준 중복 배제)
+        disclosure_map = {d.rcept_no: d for d in existing_disclosures}
+        for d in final_disclosures:
+            disclosure_map[d.rcept_no] = d  # 신규 데이터로 덮어쓰기 (UPSERT)
+            
+        merged_disclosures = list(disclosure_map.values())
+        
+        # 6. 전체 병합 데이터 정렬 (공시 등록일 내림차순, 동일할 시 회사명 내림차순)
+        merged_disclosures.sort(key=lambda x: (x.reg_date or "", x.corp_name or ""), reverse=True)
+
+        # 7. 아웃바운드 포트를 사용하여 전체 병합 데이터 영속화
+        if merged_disclosures:
+            print(f"[Service] Saving {len(merged_disclosures)} merged disclosures (Existing: {len(existing_disclosures)}, New: {len(final_disclosures)})...")
+            self.repository_port.save_all(merged_disclosures)
             print("[Service] Pipeline successfully completed!")
         else:
-            print("[Service] No valid disclosures to save.")
+            print("[Service] No disclosures to save.")
             
-        return final_disclosures
+        return merged_disclosures
 
     def _resolve_original_dates(self, disclosures: List[StockSplitDisclosure], relation_map: dict) -> None:
         """정정 공시들의 최초 원본 공시일을 규명하고 상위 부모 관계를 맵핑합니다."""
