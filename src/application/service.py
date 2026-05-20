@@ -75,7 +75,7 @@ class StockSplitCollectionService:
             # 신규 공시가 없더라도 로컬/클라우드 영속성 데이터를 정상 반환
             try:
                 return self.reader_port.load_all()
-            except:
+            except Exception:
                 return []
 
         # 중복 방지 및 복원 적재를 위한 접수번호 기준 맵 구성
@@ -150,6 +150,8 @@ class StockSplitCollectionService:
                     presenter=meta["presenter"],
                     reg_date=reg_date,
                     is_cancelled=is_cancelled,
+                    parent_rcept_no=None,
+                    original_reg_date=None,
                     pre_split_common_shares=detail["pre_split_common_shares"],
                     post_split_common_shares=detail["post_split_common_shares"],
                     new_share_listing_date=detail["new_share_listing_date"],

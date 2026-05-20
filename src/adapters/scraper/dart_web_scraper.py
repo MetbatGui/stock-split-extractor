@@ -194,7 +194,7 @@ class DartWebScraperAdapter(StockSplitScraperPort):
             history_select = soup.find("select", id="family")
             if history_select:
                 for option in history_select.find_all("option"):
-                    value = option.get("value", "")
+                    value = str(option.get("value", ""))
                     # value format: "rcpNo=2023..."
                     match = re.search(r"rcpNo=(\d{14})", value)
                     if match:

@@ -1,25 +1,12 @@
-import os
-import re
 import argparse
 from datetime import datetime, timedelta
-from adapters.scraper.dart_web_scraper import DartWebScraperAdapter
-from adapters.parser.opendart_xml_parser import OpenDartXmlParserAdapter
-from adapters.repository.local_json_repository import LocalJsonStockSplitRepositoryAdapter
-from adapters.repository.local_excel_repository import LocalExcelStockSplitRepositoryAdapter
-from adapters.repository.google_drive_repository import GoogleDriveStockSplitRepositoryAdapter
-from adapters.repository.composite_repository import CompositeStockSplitWriterAdapter
-from application.service import StockSplitCollectionService
+import sys
+import os
 
-def load_env_var(var_name: str) -> str:
-    """.env 파일에서 특정 환경 변수 값을 안전하게 파싱해 옵니다."""
-    if not os.path.exists(".env"):
-        return ""
-    with open(".env", "r", encoding="utf-8") as f:
-        content = f.read()
-    match = re.search(f"{var_name}\\s*=\\s*(.+)", content)
-    if match:
-        return match.group(1).strip().strip('"').strip("'")
-    return ""
+# src 디렉토리를 검색 경로 최상단에 확보
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+
+from infrastructure.container import container
 
 def main() -> None:
     # 0. CLI 실행 파라미터 분석 (--refresh, --days 지원)
@@ -38,52 +25,16 @@ def main() -> None:
     end_date = end_date_obj.strftime("%Y%m%d")
     
     print("=" * 60)
-    print(">>> 헥사고날 기반 주식분할 공시 파이프라인 (Local JSON/Excel + GDrive SSOT)")
+    print(">>> 헥사고날 기반 주식분할 공시 파이프라인 (DI Container 통합 운영)")
     print(f"[*] 대상 기간: {start_date_obj.strftime('%Y-%m-%d')} ~ {end_date_obj.strftime('%Y-%m-%d')} ({days_range}일간)")
     if force_refresh:
         print("[!] 알림: --refresh 플래그가 감지되었습니다. 로컬 캐시를 무시하고 실시간 재수집합니다.")
     print("=" * 60)
 
-    # .env 환경 변수 확인 (GOOGLE_STOCK_SPLIT_FOLDER_ID 우선 조회)
-    gdrive_folder_id = load_env_var("GOOGLE_STOCK_SPLIT_FOLDER_ID") or load_env_var("GOOGLE_DRIVE_FOLDER_ID")
-    if not gdrive_folder_id:
-        print("[WARNING] .env 파일에 GOOGLE_STOCK_SPLIT_FOLDER_ID가 정의되지 않았습니다.")
-        print("          구글 드라이브 동기화를 이용하려면 .env에 GOOGLE_STOCK_SPLIT_FOLDER_ID 값을 추가해 주세요.")
+    # 2. DI 컨테이너를 통해 싱글톤 서비스 획득
+    collection_service = container.collection_service
 
-    # 2. 개별 어댑터 인스턴스화
-    scraper_adapter = DartWebScraperAdapter()
-    parser_adapter = OpenDartXmlParserAdapter(cache_dir="cache")
-    local_json_repository = LocalJsonStockSplitRepositoryAdapter(file_path="data/stock_splits_with_history.json")
-    local_excel_repository = LocalExcelStockSplitRepositoryAdapter(file_path="data/stock_splits_with_history.xlsx")
-
-    gdrive_repository_adapter = None
-    if gdrive_folder_id:
-        try:
-            gdrive_repository_adapter = GoogleDriveStockSplitRepositoryAdapter(
-                folder_id=gdrive_folder_id,
-                file_name="stock_splits_with_history.json",
-                credentials_path="secrets/client_secret.json",
-                token_path="secrets/token.json"
-            )
-        except Exception as e:
-            print(f"[SSOT] [WARNING] 구글 드라이브 인증 초기화 실패 (로컬 우선 가동): {e}")
-
-    # 3. Composite Writer 구성 (다중 영속화 캡슐화)
-    writers = [local_json_repository, local_excel_repository]
-    if gdrive_repository_adapter:
-        writers.append(gdrive_repository_adapter)
-    composite_writer = CompositeStockSplitWriterAdapter(writers=writers)
-
-    # 4. 비즈니스 서비스 생성 및 포트 결합 (DIP 완성)
-    collection_service = StockSplitCollectionService(
-        scraper_port=scraper_adapter,
-        parser_port=parser_adapter,
-        reader_port=local_json_repository,
-        writer_port=composite_writer,
-        sync_port=gdrive_repository_adapter
-    )
-
-    # 5. 파이프라인 통합 가동 (단 1회 호출로 오케스트레이션 수행)
+    # 3. 파이프라인 통합 가동 (단 1회 호출로 오케스트레이션 수행)
     final_disclosures = collection_service.collect_splits_for_period(
         start_date=start_date,
         end_date=end_date,
@@ -92,7 +43,7 @@ def main() -> None:
         force_refresh=force_refresh
     )
 
-    # 6. 최종 수집 리포트 터미널 출력
+    # 4. 최종 수집 리포트 터미널 출력
     print("\n" + "=" * 60)
     print(f"[SUCCESS] 파이프라인 가동 완료: 총 {len(final_disclosures)}건 처리")
     print("=" * 60)

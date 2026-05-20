@@ -33,7 +33,7 @@ class LocalExcelStockSplitRepositoryAdapter(StockSplitWriterPort):
         self._save_to_file(disclosures, self.file_path, sheet_name="주식분할결정_종합")
 
         # 2. 연도별 분류 및 분할 저장
-        by_year = {}
+        by_year: dict[str, List[StockSplitDisclosure]] = {}
         for disc in disclosures:
             year = "미정"
             if disc.reg_date and len(disc.reg_date) >= 4:
