@@ -116,7 +116,7 @@ def main() -> None:
     print(f"{'회사명':<10} | {'분할비율':<6} | {'분할전 주식수':<14} | {'분할후 주식수':<14} | {'신주상장일':<10} | {'이사회결의일':<10}")
     print("-" * 85)
     for disc in final_disclosures[:15]:
-        if disc.is_cancelled:
+        if disc.status == "철회":
             ratio = "철회"
             before = "철회"
             after = "철회"

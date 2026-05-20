@@ -34,10 +34,12 @@ class StockSplitDisclosure(BaseModel):
     @classmethod
     def validate_reg_date(cls, value: Optional[str]) -> Optional[str]:
         """접수일자 형식(YYYY.MM.DD) 유효성 검사 및 정규화"""
-        if value is None or value == "" or value == "-":
+        if value is None or value == "":
             return None
             
         value_clean = value.strip()
+        if value_clean == "-":
+            return "-"
         # YYYY.MM.DD 또는 YYYY-MM-DD 둘 다 수용 후 YYYY.MM.DD로 정규화
         if re.match(r"^\d{4}\.\d{2}\.\d{2}$", value_clean):
             return value_clean
@@ -49,10 +51,12 @@ class StockSplitDisclosure(BaseModel):
     @classmethod
     def validate_detail_dates(cls, value: Optional[str]) -> Optional[str]:
         """상세 날짜 필드(YYYY-MM-DD) 유효성 검사 및 정규화"""
-        if value is None or value == "" or value == "-":
+        if value is None or value == "":
             return None
             
         value_clean = value.strip()
+        if value_clean == "-":
+            return "-"
         if re.match(r"^\d{4}-\d{2}-\d{2}$", value_clean):
             return value_clean
         elif re.match(r"^\d{4}\.\d{2}\.\d{2}$", value_clean):
@@ -86,3 +90,18 @@ class StockSplitDisclosure(BaseModel):
         if ratio is None:
             return False
         return ratio.is_integer()
+
+    @property
+    def status(self) -> str:
+        """
+        공시의 최종 진행 상태를 반환합니다.
+        - "철회": 공시 자체가 철회 결정된 상태
+        - "연기": 철회되지 않았으나, 관계기관 협의나 소송 등으로 신주상장예정일이 보류/유예된 상태 ("-")
+        - "정상": 그 외 정상적으로 상장일까지 확정 진행 중인 상태
+        """
+        if self.is_cancelled:
+            return "철회"
+        if self.new_share_listing_date == "-":
+            return "연기"
+        return "정상"
+

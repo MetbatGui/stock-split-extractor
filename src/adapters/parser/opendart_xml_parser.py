@@ -155,6 +155,9 @@ class OpenDartXmlParserAdapter(StockSplitParserPort):
                         if re.match(date_pattern, inp_text):
                             result["new_share_listing_date"] = inp_text
                             break
+                        elif inp_text.strip() == "-":
+                            result["new_share_listing_date"] = "-"
+                            break
 
             # 3. 이사회결의일 파싱
             elif "이사회결의일" in tr_text:
@@ -167,6 +170,9 @@ class OpenDartXmlParserAdapter(StockSplitParserPort):
                         inp_text = self._clean_text(inp.get_text())
                         if re.match(date_pattern, inp_text):
                             result["board_resolution_date"] = inp_text
+                            break
+                        elif inp_text.strip() == "-":
+                            result["board_resolution_date"] = "-"
                             break
 
         return result

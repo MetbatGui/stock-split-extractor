@@ -19,26 +19,46 @@ class LocalExcelStockSplitRepositoryAdapter(StockSplitRepositoryPort):
 
     def save_all(self, disclosures: List[StockSplitDisclosure]) -> None:
         """
-        도메인 모델 리스트를 판다스 DataFrame으로 변환하고, 
-        열 너비 자동 맞춤이 적용된 고급 엑셀 파일로 디스크에 저장합니다.
+        도메인 모델 리스트를 종합 엑셀로 저장할 뿐만 아니라,
+        공시년도별로 분할하여 '액면분할(YYYY년).xlsx' 형식의 별도 파일로 쪼개어 저장합니다.
         """
         if not disclosures:
             print("[ExcelAdapter] No disclosures to save. Excel creation skipped.")
             return
 
+        # 부모 디렉토리 확보
+        base_dir = os.path.dirname(self.file_path) or "data"
+
+        # 1. 종합 엑셀 파일 저장 (기존 스펙 보존)
+        self._save_to_file(disclosures, self.file_path, sheet_name="주식분할결정_종합")
+
+        # 2. 연도별 분류 및 분할 저장
+        by_year = {}
+        for disc in disclosures:
+            year = "미정"
+            if disc.reg_date and len(disc.reg_date) >= 4:
+                year = disc.reg_date[:4]  # YYYY 추출
+            
+            if year not in by_year:
+                by_year[year] = []
+            by_year[year].append(disc)
+
+        for year, year_disclosures in by_year.items():
+            year_file_path = os.path.join(base_dir, f"액면분할({year}년).xlsx")
+            self._save_to_file(year_disclosures, year_file_path, sheet_name=f"주식분할결정_{year}년")
+
+    def _save_to_file(self, disclosures: List[StockSplitDisclosure], target_path: str, sheet_name: str) -> None:
+        """단일 엑셀 파일로 저장 및 프리미엄 너비 맞춤 처리를 하는 내부 헬퍼 메서드"""
         # 1. 도메인 모델 리스트를 사전 리스트 형식으로 전환
         raw_data = []
         for disc in disclosures:
-            # 기재정정 여부 판별
             is_correction = "[기재정정]" if "정정" in disc.report_nm else ""
-            
-            # 이전공시번호 판별 (최초공시이거나 이전번호가 없으면 비우기)
             parent_no = disc.parent_rcept_no if (disc.parent_rcept_no and "정정" in disc.report_nm) else ""
 
             raw_data.append({
                 "회사명": disc.corp_name,
                 "기재정정": is_correction,
-                "철회여부": "철회" if disc.is_cancelled else "정상",
+                "철회여부": disc.status,
                 "등록일자": disc.reg_date,
                 "최초공시 등록일자": disc.original_reg_date or disc.reg_date,
                 "공시번호": disc.rcept_no,
@@ -52,12 +72,9 @@ class LocalExcelStockSplitRepositoryAdapter(StockSplitRepositoryPort):
 
         # 2. DataFrame 생성
         df = pd.DataFrame(raw_data)
-
-        # 3. ExcelWriter와 openpyxl 엔진을 사용하여 엑셀 작성 및 고급 스타일링
-        sheet_name = "주식분할결정_최근1년"
         
         try:
-            with pd.ExcelWriter(self.file_path, engine='openpyxl') as writer:
+            with pd.ExcelWriter(target_path, engine='openpyxl') as writer:
                 df.to_excel(writer, sheet_name=sheet_name, index=False)
                 
                 # 워크시트 객체 획득
@@ -65,30 +82,29 @@ class LocalExcelStockSplitRepositoryAdapter(StockSplitRepositoryPort):
                 worksheet = workbook[sheet_name]
                 
                 # 프리미엄 스타일링 - 엑셀 열 너비 자동 보정 (Auto-fit Columns)
-                # 한글 데이터의 문자 폭을 고려하여 동적으로 셀의 가로 폭을 연산하고 자동 확장합니다.
                 for col in worksheet.columns:
                     max_len = 0
-                    col_letter = col[0].column_letter  # 열 알파벳 (예: 'A', 'B' ...)
+                    col_letter = col[0].column_letter
                     
                     for cell in col:
                         val = cell.value
                         if val is not None:
                             val_str = str(val)
-                            # 한글(유니코드 한글 영역)은 2바이트 공간을 먹으므로 너비 연산 가중치(+1) 부여
+                            # 한글은 너비 연산 가중치(+2) 부여
                             actual_len = 0
                             for char in val_str:
-                                if ord(char) > 127:  # 한글 및 유니코드 다국어 문자
+                                if ord(char) > 127:
                                     actual_len += 2
                                 else:
                                     actual_len += 1
                             if actual_len > max_len:
                                 max_len = actual_len
                     
-                    # 헤더 및 컨텐츠 길이에 기반해 적절한 마진(padding=4)을 준 열 너비 세팅
                     worksheet.column_dimensions[col_letter].width = max(max_len + 4, 12)
             
-            print(f"[ExcelAdapter] Successfully saved {len(disclosures)} disclosures to EXCEL: {self.file_path}")
+            print(f"[ExcelAdapter] Successfully saved {len(disclosures)} disclosures to EXCEL: {target_path}")
             
         except Exception as excel_err:
-            print(f"[ExcelAdapter] [ERROR] Failed to save excel file: {excel_err}")
+            print(f"[ExcelAdapter] [ERROR] Failed to save excel file {target_path}: {excel_err}")
             raise excel_err
+
