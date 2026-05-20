@@ -41,11 +41,12 @@ def main() -> None:
         print("[!] 알림: --refresh 플래그가 감지되었습니다. 로컬 캐시를 무시하고 실시간 재수집합니다.")
     print("=" * 60)
 
-    # .env 환경 변수 확인
-    gdrive_folder_id = load_env_var("GOOGLE_DRIVE_FOLDER_ID")
+    # .env 환경 변수 확인 (GOOGLE_STOCK_SPLIT_FOLDER_ID 우선 조회)
+    gdrive_folder_id = load_env_var("GOOGLE_STOCK_SPLIT_FOLDER_ID") or load_env_var("GOOGLE_DRIVE_FOLDER_ID")
     if not gdrive_folder_id:
-        print("[WARNING] .env 파일에 GOOGLE_DRIVE_FOLDER_ID가 정의되지 않았습니다.")
-        print("          구글 드라이브 동기화를 이용하려면 .env에 GOOGLE_DRIVE_FOLDER_ID 값을 추가해 주세요.")
+        print("[WARNING] .env 파일에 GOOGLE_STOCK_SPLIT_FOLDER_ID가 정의되지 않았습니다.")
+        print("          구글 드라이브 동기화를 이용하려면 .env에 GOOGLE_STOCK_SPLIT_FOLDER_ID 값을 추가해 주세요.")
+
 
     # 2. 어댑터 인스턴스화
     scraper_adapter = DartWebScraperAdapter()
@@ -79,7 +80,7 @@ def main() -> None:
             print(f"[Excel] [ERROR] 엑셀 생성 실패: {e}")
         print("-" * 60)
 
-        # 6. 2차 구글 드라이브 SSOT 업로드 동기화
+        # 6. 2차 구글 드라이브 SSOT 업로드 동기화 (종합 JSON + 엑셀 파일들 자동 동기화)
         if gdrive_folder_id:
             print("\n" + "-" * 60)
             print("[SSOT] 구글 드라이브 클라우드 업로드 동기화를 시작합니다...")
@@ -93,9 +94,28 @@ def main() -> None:
                     token_path="secrets/token.json"
                 )
                 
-                # 클라우드 동기화 수행
+                # 6-A. 종합 JSON 데이터베이스 동기화
                 gdrive_repository_adapter.save_all(final_disclosures)
-                print("[SSOT] 구글 드라이브 클라우드 동기화 성공!")
+                
+                # 6-B. 로컬 디스크에 재생성된 엑셀 파일들 목록 동적 탐색하여 클라우드 업로드
+                print("[SSOT] 로컬 엑셀 파일 동기화를 진행합니다...")
+                excel_files = [
+                    ("data/stock_splits_with_history.xlsx", "stock_splits_with_history.xlsx"),
+                    ("data/액면분할(2026년).xlsx", "액면분할(2026년).xlsx"),
+                    ("data/액면분할(2025년).xlsx", "액면분할(2025년).xlsx"),
+                    ("data/액면분할(2024년).xlsx", "액면분할(2024년).xlsx")
+                ]
+                
+                for local_path, remote_name in excel_files:
+                    if os.path.exists(local_path):
+                        # 엑셀 MimeType: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+                        gdrive_repository_adapter.upload_local_file(
+                            local_path=local_path,
+                            remote_name=remote_name,
+                            mime_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                        )
+                
+                print("[SSOT] 구글 드라이브 모든 파일(JSON/Excel) 동기화 완료!")
             except FileNotFoundError as fnf_err:
                 print(f"\n[SSOT] [ERROR] 구글 드라이브 업로드 실패: {fnf_err}")
                 print("        ➡️ 'secrets/client_secret.json' 파일이 필요합니다.")

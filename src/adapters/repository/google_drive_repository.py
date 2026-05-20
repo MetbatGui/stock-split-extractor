@@ -6,8 +6,10 @@ from typing import List, Optional, Any
 from google.oauth2.credentials import Credentials  # type: ignore
 from google_auth_oauthlib.flow import InstalledAppFlow  # type: ignore
 from google.auth.transport.requests import Request  # type: ignore
+import io
 from googleapiclient.discovery import build  # type: ignore
-from googleapiclient.http import MediaFileUpload  # type: ignore
+from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload  # type: ignore
+
 
 from domain.models import StockSplitDisclosure
 from ports.repository import StockSplitRepositoryPort
@@ -122,28 +124,27 @@ class GoogleDriveStockSplitRepositoryAdapter(StockSplitRepositoryPort):
     def save_all(self, disclosures: List[StockSplitDisclosure]) -> None:
         """
         도메인 모델 리스트를 JSON 문자열로 직렬화하여 구글 드라이브에 안전하게 동기화 업로드합니다.
-        기존 동일 파일명이 존재할 경우 자동으로 덮어씁니다.
+        메모리 버퍼(BytesIO)를 활용하여 윈도우 환경의 파일 락(WinError 32)을 원천 방지합니다.
         """
         if not self.folder_id:
-            self.logger.warning("[GDriveRepo] GOOGLE_DRIVE_FOLDER_ID is empty. Cloud sync skipped.")
+            self.logger.warning("[GDriveRepo] GOOGLE_STOCK_SPLIT_FOLDER_ID is empty. Cloud sync skipped.")
             return
 
         # 1. 도메인 데이터를 메모리 상에서 JSON 구조로 변환
         data_to_save = [disc.model_dump() for disc in disclosures]
         json_content = json.dumps(data_to_save, ensure_ascii=False, indent=4)
         
-        # 2. 임시 파일(TempFile) 생성하여 로컬 쓰기
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json', encoding='utf-8') as tmp_file:
-            tmp_file.write(json_content)
-            tmp_path = tmp_file.name
+        # 2. BytesIO 메모리 버퍼 생성
+        json_bytes = json_content.encode('utf-8')
+        fh = io.BytesIO(json_bytes)
 
         try:
             # 3. 구글 드라이브 상에서 파일명 조회 및 덮어쓰기 여부 결정
             existing_file_id = self._find_file_by_name(self.file_name)
             
-            # JSON 파일용 MimeType 설정
-            media = MediaFileUpload(
-                tmp_path,
+            # 메모리 버퍼용 MediaIoBaseUpload 설정
+            media = MediaIoBaseUpload(
+                fh,
                 mimetype='application/json',
                 resumable=True
             )
@@ -171,7 +172,46 @@ class GoogleDriveStockSplitRepositoryAdapter(StockSplitRepositoryPort):
         except Exception as upload_err:
             self.logger.error(f"[GDriveRepo] Error uploading file to Google Drive: {upload_err}")
             raise upload_err
-        finally:
-            # 임시 파일 삭제 안전장치
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
+
+
+    def upload_local_file(self, local_path: str, remote_name: str, mime_type: str) -> None:
+        """
+        로컬에 존재하는 임의의 파일(예: 엑셀, JSON 등)을 구글 드라이브의 대상 폴더에 업로드합니다.
+        기존 동일한 이름의 파일이 있으면 자동으로 찾아 덮어씁니다.
+        """
+        if not self.folder_id:
+            self.logger.warning("[GDriveRepo] GOOGLE_STOCK_SPLIT_FOLDER_ID is empty. Upload skipped.")
+            return
+
+        if not os.path.exists(local_path):
+            self.logger.error(f"[GDriveRepo] Local file not found for upload: {local_path}")
+            return
+
+        try:
+            # 기존 구글 드라이브상 파일 조회
+            existing_file_id = self._find_file_by_name(remote_name)
+            media = MediaFileUpload(local_path, mimetype=mime_type, resumable=True)
+
+            if existing_file_id:
+                # 덮어쓰기 업데이트
+                file = self.service.files().update(
+                    fileId=existing_file_id,
+                    media_body=media
+                ).execute()
+                self.logger.info(f"[GDriveRepo] Successfully UPDATED local file '{remote_name}' to Google Drive (ID: {file.get('id')})")
+            else:
+                # 신규 생성 업로드
+                file_metadata = {
+                    'name': remote_name,
+                    'parents': [self.folder_id]
+                }
+                file = self.service.files().create(
+                    body=file_metadata,
+                    media_body=media,
+                    fields='id'
+                ).execute()
+                self.logger.info(f"[GDriveRepo] Successfully UPLOADED new local file '{remote_name}' to Google Drive (ID: {file.get('id')})")
+        except Exception as e:
+            self.logger.error(f"[GDriveRepo] Failed to upload local file '{remote_name}': {e}")
+            raise e
+
