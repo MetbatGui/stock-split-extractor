@@ -1,5 +1,5 @@
 import os
-import pandas as pd  # type: ignore
+import pandas as pd
 from typing import List
 from domain.models import StockSplitDisclosure
 from ports.repository import StockSplitWriterPort

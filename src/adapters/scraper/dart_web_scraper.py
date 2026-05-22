@@ -85,7 +85,7 @@ class DartWebScraperAdapter(StockSplitScraperPort):
             # 레이트 리밋 우회를 위한 임의 딜레이
             time.sleep(random.uniform(1.0, 1.8))
             
-            response = self.session.post(self.search_url, data=payload, headers=self.headers)
+            response = self.session.post(self.search_url, data=payload, headers=self.headers, timeout=15)
             response.raise_for_status()
 
             soup = BeautifulSoup(response.text, "html.parser")

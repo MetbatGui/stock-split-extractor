@@ -3,12 +3,12 @@ import json
 import logging
 from typing import List, Optional, Any
 from datetime import datetime, timezone
-from google.oauth2.credentials import Credentials  # type: ignore
-from google_auth_oauthlib.flow import InstalledAppFlow  # type: ignore
-from google.auth.transport.requests import Request  # type: ignore
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
 import io
-from googleapiclient.discovery import build  # type: ignore
-from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload, MediaIoBaseDownload  # type: ignore
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload, MediaIoBaseDownload
 
 
 
@@ -41,7 +41,7 @@ class GoogleDriveStockSplitRepositoryAdapter(StockSplitWriterPort, CloudSyncPort
         """
         # 기본 로거 연동
         logging.basicConfig(level=logging.INFO)
-        self.logger = logging.getLogger(self.__name__ if hasattr(self, '__name__') else "GoogleDriveRepoAdapter")
+        self.logger = logging.getLogger("GoogleDriveRepoAdapter")
         
         self.folder_id = folder_id.strip()
         self.file_name = file_name

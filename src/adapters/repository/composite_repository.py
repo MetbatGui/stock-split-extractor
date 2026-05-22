@@ -1,4 +1,4 @@
-from typing import List
+from collections.abc import Sequence
 from ports.repository import StockSplitWriterPort
 from domain.models import StockSplitDisclosure
 
@@ -8,10 +8,10 @@ class CompositeStockSplitWriterAdapter(StockSplitWriterPort):
     단 한 번의 save_all 호출로 연쇄 영속화 처리를 수행하는 복합(Composite) 어댑터
     """
     
-    def __init__(self, writers: List[StockSplitWriterPort]) -> None:
+    def __init__(self, writers: Sequence[StockSplitWriterPort]) -> None:
         self.writers = writers
 
-    def save_all(self, disclosures: List[StockSplitDisclosure]) -> None:
+    def save_all(self, disclosures: list[StockSplitDisclosure]) -> None:
         """주입받은 하위 모든 WriterPort들에 대해 순차적으로 저장 처리를 지시합니다."""
         for writer in self.writers:
             try:
