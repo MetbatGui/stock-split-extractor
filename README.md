@@ -105,9 +105,11 @@ docker compose -f docker/docker-compose.yml run --rm extractor python main.py --
 docker compose -f docker/docker-compose.yml up -d extractor-cron
 ```
 
-컨테이너 내장 cron이 스케줄에 따라 `--days 7` 수집을 자동 실행합니다. 스케줄은
-`docker/crontab`을 참고하세요(기본: 평일 18:00 KST — 공시 데이터라 장마감 시각과 무관하게
-잡혀 있으니 필요에 맞게 조정 가능).
+컨테이너 내장 cron이 스케줄에 따라 `--days 30` 수집을 자동 실행합니다. 완료 판정 덕에 이미
+저장된 접수번호는 재파싱 없이 스킵되므로, 창을 넉넉하게 잡아도 비용이 늘지 않고 실질적인
+자동 백필 역할을 합니다(`orchestration_guide.md` §2.2). 스케줄은 `docker/crontab`을
+참고하세요(기본: 평일 16:05 KST — 공시 데이터라 장마감 시각과 무관하게 잡혀 있으니 필요에
+맞게 조정 가능).
 
 ---
 
