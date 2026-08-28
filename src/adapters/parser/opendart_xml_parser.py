@@ -2,7 +2,7 @@ import os
 import re
 import zipfile
 import io
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 import requests
 from bs4 import BeautifulSoup
 from ports.parser import StockSplitParserPort
@@ -16,18 +16,7 @@ class OpenDartXmlParserAdapter(StockSplitParserPort):
     def __init__(self, cache_dir: str = "cache") -> None:
         self.cache_dir = cache_dir
         os.makedirs(self.cache_dir, exist_ok=True)
-        self.api_key = self._load_api_key()
-
-    def _load_api_key(self) -> Optional[str]:
-        """.env 파일에서 DART_API_KEY를 탐색하여 로드합니다."""
-        if not os.path.exists(".env"):
-            return None
-        with open(".env", "r", encoding="utf-8") as f:
-            content = f.read()
-        match = re.search(r"DART_API_KEY\s*=\s*([a-zA-Z0-9]+)", content)
-        if match:
-            return match.group(1).strip()
-        return None
+        self.api_key = os.getenv("DART_API_KEY")
 
     def _clean_text(self, text: str) -> str:
         """텍스트 공백 정제"""
@@ -54,7 +43,7 @@ class OpenDartXmlParserAdapter(StockSplitParserPort):
             "rcept_no": rcept_no
         }
 
-        response = requests.get(url, params=params)
+        response = requests.get(url, params=params, timeout=15)
         response.raise_for_status()
 
         # 에러 처리

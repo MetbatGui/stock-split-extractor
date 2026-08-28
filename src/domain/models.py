@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Dict, List
 from pydantic import BaseModel, Field, field_validator
 import re
 
@@ -104,4 +104,48 @@ class StockSplitDisclosure(BaseModel):
         if self.new_share_listing_date == "-":
             return "연기"
         return "정상"
+
+
+class StockSplitDisclosureChain(BaseModel):
+    """
+    정정 관계에 놓인 공시들의 체인(이력 그룹)을 관리하는 도메인 Aggregate.
+    서비스 레이어에 흩어져 있던 최초 공시일 추론 및 세대 간 부모-자식 매핑 관계 바인딩 비즈니스 정책을 캡슐화합니다.
+    """
+    disclosures: List[StockSplitDisclosure] = Field(..., description="체인에 속한 공시 모델 리스트")
+    relation_map: Dict[str, str] = Field(..., description="부모-자식 공시쌍 간의 접수번호 관계 맵 (child_rcept_no -> parent_rcept_no)")
+
+    def resolve_original_dates(self) -> None:
+        """
+        체인 내부의 부모-자식 연관 관계를 순회 탐색하여,
+        각 정정 공시의 최초 원본 공시일(original_reg_date)과 직전 부모 접수번호(parent_rcept_no)를 규명하고 업데이트합니다.
+        """
+        disclosure_map = {d.rcept_no: d for d in self.disclosures}
+        
+        for disc in self.disclosures:
+            curr = disc
+            visited = set()
+            root_reg_date = disc.reg_date
+            
+            # 부모 접수번호 맵핑 및 최초 공시 접수일자 추적
+            while curr.rcept_no in self.relation_map:
+                parent_rcp = self.relation_map[curr.rcept_no]
+                disc.parent_rcept_no = parent_rcp
+                
+                if parent_rcp in visited:
+                    break
+                visited.add(parent_rcp)
+                
+                if parent_rcp in disclosure_map:
+                    parent_disc = disclosure_map[parent_rcp]
+                    curr = parent_disc
+                    if parent_disc.reg_date:
+                        root_reg_date = parent_disc.reg_date
+                else:
+                    if len(parent_rcp) >= 8:
+                        p_date = f"{parent_rcp[:4]}.{parent_rcp[4:6]}.{parent_rcp[6:8]}"
+                        root_reg_date = p_date
+                    break
+            
+            disc.original_reg_date = root_reg_date
+
 
