@@ -44,13 +44,14 @@ def main() -> None:
     collection_service = container.collection_service
 
     # 3. 파이프라인 통합 가동 (단 1회 호출로 오케스트레이션 수행)
-    final_disclosures = collection_service.collect_splits_for_period(
+    result = collection_service.collect_splits_for_period(
         start_date=start_date,
         end_date=end_date,
         keyword="주식분할결정",
         exclude_corrections=False,
         force_refresh=force_refresh
     )
+    final_disclosures = result.disclosures
 
     # 4. 최종 수집 리포트 터미널 출력
     print("\n" + "=" * 60)
