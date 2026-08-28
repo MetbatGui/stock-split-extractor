@@ -1,53 +1,48 @@
 import os
-import json
 import logging
-from typing import List, Optional, Any
+from typing import Optional, Any
 from datetime import datetime, timezone
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 import io
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload, MediaIoBaseDownload
+from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
 
 
-from domain.models import StockSplitDisclosure
-from ports.repository import StockSplitWriterPort, CloudSyncPort
+from ports.repository import CloudSyncPort
 
-class GoogleDriveStockSplitRepositoryAdapter(StockSplitWriterPort, CloudSyncPort):
+class GoogleDriveStockSplitRepositoryAdapter(CloudSyncPort):
     """
-    수집 완료된 도메인 모델 데이터를 구글 드라이브 (SSOT)에 
-    JSON 파일 형태로 저장하고 동기화 업로드하는 어댑터 (Writer 및 CloudSync 구현체)
+    로컬 파일(SQLite SSOT DB, Excel 산출물 등)을 구글 드라이브와 동기화하는
+    어댑터 (CloudSync 구현체)
     """
-    
+
     SCOPES = ['https://www.googleapis.com/auth/drive']
 
     def __init__(
         self,
         folder_id: str,
-        file_name: str = "stock_splits_1year.json",
         credentials_path: str = "secrets/client_secret.json",
         token_path: str = "secrets/token.json"
     ) -> None:
         """
         구글 드라이브 리포지토리 어댑터 초기화
-        
+
         Args:
             folder_id: 구글 드라이브 대상 폴더 ID
-            file_name: 저장할 클라우드 파일 이름
             credentials_path: OAuth2 클라이언트 보안 비밀번호 파일 경로
             token_path: 토큰 캐시 저장 파일 경로
         """
         # 기본 로거 연동
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger("GoogleDriveRepoAdapter")
-        
+
         self.folder_id = folder_id.strip()
-        self.file_name = file_name
         self.credentials_path = credentials_path
         self.token_path = token_path
-        
+
         # 구글 드라이브 API 서비스 지연 빌드 (lazy load)
         self._service: Optional[Any] = None
 
@@ -121,59 +116,6 @@ class GoogleDriveStockSplitRepositoryAdapter(StockSplitWriterPort, CloudSyncPort
         except Exception as e:
             self.logger.warning(f"[GDriveRepo] Query error during file name search: {e}")
             return None
-
-    def save_all(self, disclosures: List[StockSplitDisclosure]) -> None:
-        """
-        도메인 모델 리스트를 JSON 문자열로 직렬화하여 구글 드라이브에 안전하게 동기화 업로드합니다.
-        메모리 버퍼(BytesIO)를 활용하여 윈도우 환경의 파일 락(WinError 32)을 원천 방지합니다.
-        """
-        if not self.folder_id:
-            self.logger.warning("[GDriveRepo] GOOGLE_STOCK_SPLIT_FOLDER_ID is empty. Cloud sync skipped.")
-            return
-
-        # 1. 도메인 데이터를 메모리 상에서 JSON 구조로 변환
-        data_to_save = [disc.model_dump() for disc in disclosures]
-        json_content = json.dumps(data_to_save, ensure_ascii=False, indent=4)
-        
-        # 2. BytesIO 메모리 버퍼 생성
-        json_bytes = json_content.encode('utf-8')
-        fh = io.BytesIO(json_bytes)
-
-        try:
-            # 3. 구글 드라이브 상에서 파일명 조회 및 덮어쓰기 여부 결정
-            existing_file_id = self._find_file_by_name(self.file_name)
-            
-            # 메모리 버퍼용 MediaIoBaseUpload 설정
-            media = MediaIoBaseUpload(
-                fh,
-                mimetype='application/json',
-                resumable=True
-            )
-            
-            if existing_file_id:
-                # 3-A. 덮어쓰기 업데이트
-                file = self.service.files().update(
-                    fileId=existing_file_id,
-                    media_body=media
-                ).execute()
-                self.logger.info(f"[GDriveRepo] Successfully UPDATED SSOT file on Google Drive (ID: {file.get('id')})")
-            else:
-                # 3-B. 신규 파일 업로드
-                file_metadata = {
-                    'name': self.file_name,
-                    'parents': [self.folder_id]
-                }
-                file = self.service.files().create(
-                    body=file_metadata,
-                    media_body=media,
-                    fields='id, webViewLink'
-                ).execute()
-                self.logger.info(f"[GDriveRepo] Successfully UPLOADED new SSOT file to Google Drive (ID: {file.get('id')})")
-                
-        except Exception as upload_err:
-            self.logger.error(f"[GDriveRepo] Error uploading file to Google Drive: {upload_err}")
-            raise upload_err
-
 
     def sync_up_file(self, local_path: str, remote_name: str, mime_type: str) -> None:
         """
