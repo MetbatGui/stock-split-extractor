@@ -48,10 +48,10 @@ class StockSplitCollectionService:
         if self.sync_port and not force_refresh:
             print("[Service] Smart sync checking on Google Drive (SSOT)...")
             try:
-                # (1) 종합 JSON 데이터베이스 스마트 다운로드
+                # (1) 종합 JSON 매니페스트 스마트 다운로드
                 self.sync_port.sync_down_if_newer(
-                    remote_name="stock_splits_with_history.json",
-                    local_path="data/stock_splits_with_history.json"
+                    remote_name="stock_splits_manifest.json",
+                    local_path="data/stock_splits_manifest.json"
                 )
                 # (2) 현년 엑셀 시트 스마트 다운로드
                 self.sync_port.sync_down_if_newer(
@@ -194,20 +194,20 @@ class StockSplitCollectionService:
             if self.sync_port:
                 print("[Service] Commencing smart sync upload to Google Drive...")
                 try:
-                    # (1) 로컬 디렉토리에 동적으로 생성된 엑셀 파일들 클라우드 업로드
-                    excel_files = [
-                        ("data/stock_splits_with_history.xlsx", "stock_splits_with_history.xlsx"),
-                        (f"data/액면분할({current_year}년).xlsx", f"액면분할({current_year}년).xlsx"),
-                        (f"data/액면분할({current_year - 1}년).xlsx", f"액면분할({current_year - 1}년).xlsx"),
-                        (f"data/액면분할({current_year - 2}년).xlsx", f"액면분할({current_year - 2}년).xlsx")
+                    # (1) 로컬 디렉토리에 동적으로 생성된 엑셀 파일 및 매니페스트 클라우드 업로드
+                    sync_targets = [
+                        ("data/stock_splits_manifest.json", "stock_splits_manifest.json", "application/json"),
+                        (f"data/액면분할({current_year}년).xlsx", f"액면분할({current_year}년).xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+                        (f"data/액면분할({current_year - 1}년).xlsx", f"액면분할({current_year - 1}년).xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+                        (f"data/액면분할({current_year - 2}년).xlsx", f"액면분할({current_year - 2}년).xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                     ]
                     
-                    for local_path, remote_name in excel_files:
+                    for local_path, remote_name, mime_type in sync_targets:
                         if os.path.exists(local_path):
                             self.sync_port.sync_up_file(
                                 local_path=local_path,
                                 remote_name=remote_name,
-                                mime_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                                mime_type=mime_type
                             )
                     print("[Service] Google Drive cloud sync completely succeeded!")
                 except Exception as sync_err:

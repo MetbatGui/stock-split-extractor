@@ -9,24 +9,33 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 from infrastructure.container import container
 
 def main() -> None:
-    # 0. CLI 실행 파라미터 분석 (--refresh, --days 지원)
+    # 0. CLI 실행 파라미터 분석 (--refresh, --days, --start, --end 지원)
     parser = argparse.ArgumentParser(description="주식분할 공시 수집기 파이프라인")
     parser.add_argument("--refresh", action="store_true", help="로컬 캐시 XML 파일을 무시하고 DART API에서 최신 데이터를 실시간 강제 재다운로드합니다.")
     parser.add_argument("--days", type=int, default=7, help="수집할 최근 일수 범위를 지정합니다 (기본값: 7일)")
+    parser.add_argument("--start", type=str, default="", help="수집 시작일 (YYYYMMDD 형식)")
+    parser.add_argument("--end", type=str, default="", help="수집 종료일 (YYYYMMDD 형식)")
     args, unknown = parser.parse_known_args()
     force_refresh = args.refresh
     days_range = args.days
 
-    # 1. 대상 기간 설정 (실행일 기준 동적 범위 설정, 기본 최근 7일)
-    end_date_obj = datetime.now()
-    start_date_obj = end_date_obj - timedelta(days=days_range)
-    
-    start_date = start_date_obj.strftime("%Y%m%d")
-    end_date = end_date_obj.strftime("%Y%m%d")
+    # 1. 대상 기간 설정 (고정 범위 우선, 없으면 실행일 기준 동적 범위 설정)
+    if args.start:
+        start_date = args.start
+        # 만약 start_date만 있고 end_date가 없으면 오늘로 설정
+        end_date = args.end if args.end else datetime.now().strftime("%Y%m%d")
+        
+        start_date_obj = datetime.strptime(start_date, "%Y%m%d")
+        end_date_obj = datetime.strptime(end_date, "%Y%m%d")
+    else:
+        end_date_obj = datetime.now()
+        start_date_obj = end_date_obj - timedelta(days=days_range)
+        start_date = start_date_obj.strftime("%Y%m%d")
+        end_date = end_date_obj.strftime("%Y%m%d")
     
     print("=" * 60)
     print(">>> 헥사고날 기반 주식분할 공시 파이프라인 (DI Container 통합 운영)")
-    print(f"[*] 대상 기간: {start_date_obj.strftime('%Y-%m-%d')} ~ {end_date_obj.strftime('%Y-%m-%d')} ({days_range}일간)")
+    print(f"[*] 대상 기간: {start_date_obj.strftime('%Y-%m-%d')} ~ {end_date_obj.strftime('%Y-%m-%d')}")
     if force_refresh:
         print("[!] 알림: --refresh 플래그가 감지되었습니다. 로컬 캐시를 무시하고 실시간 재수집합니다.")
     print("=" * 60)

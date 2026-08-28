@@ -31,7 +31,7 @@ class Container:
             file_path=str(self._config.json_file_path)
         )
         self._local_excel_repository = LocalExcelStockSplitRepositoryAdapter(
-            file_path=str(self._config.excel_file_path)
+            output_dir=str(self._config.data_dir)
         )
 
         # 4. 조건부 구글 드라이브 리포지토리 구성

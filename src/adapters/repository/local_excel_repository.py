@@ -7,32 +7,25 @@ from ports.repository import StockSplitWriterPort
 class LocalExcelStockSplitRepositoryAdapter(StockSplitWriterPort):
     """
     수집 완료된 도메인 모델 데이터를 프리미엄 스타일이 적용된 
-    Excel 파일 형태로 로컬 디스크에 저장하는 어댑터 (StockSplitWriterPort 구현체)
+    연도별 Excel 파일 형태로 로컬 디스크에 분할 저장하는 어댑터 (StockSplitWriterPort 구현체)
     """
 
-    def __init__(self, file_path: str = "data/stock_splits_1year.xlsx") -> None:
-        self.file_path = file_path
+    def __init__(self, output_dir: str = "data") -> None:
+        self.output_dir = output_dir
         # 부모 디렉토리 자동 생성
-        dir_name = os.path.dirname(self.file_path)
-        if dir_name:
-            os.makedirs(dir_name, exist_ok=True)
+        if self.output_dir:
+            os.makedirs(self.output_dir, exist_ok=True)
 
     def save_all(self, disclosures: List[StockSplitDisclosure]) -> None:
         """
-        도메인 모델 리스트를 종합 엑셀로 저장할 뿐만 아니라,
-        공시년도별로 분할하여 '액면분할(YYYY년).xlsx' 형식의 별도 파일로 쪼개어 저장합니다.
+        도메인 모델 리스트를 공시년도별로 분류하여 '액면분할(YYYY년).xlsx' 형식의 
+        별도 독립 엑셀 파일로 쪼개어 프리미엄 포맷으로 저장합니다. (종합 중복 파일 제거)
         """
         if not disclosures:
             print("[ExcelAdapter] No disclosures to save. Excel creation skipped.")
             return
 
-        # 부모 디렉토리 확보
-        base_dir = os.path.dirname(self.file_path) or "data"
-
-        # 1. 종합 엑셀 파일 저장 (기존 스펙 보존)
-        self._save_to_file(disclosures, self.file_path, sheet_name="주식분할결정_종합")
-
-        # 2. 연도별 분류 및 분할 저장
+        # 연도별 분류 및 분할 저장
         by_year: dict[str, List[StockSplitDisclosure]] = {}
         for disc in disclosures:
             year = "미정"
@@ -44,7 +37,7 @@ class LocalExcelStockSplitRepositoryAdapter(StockSplitWriterPort):
             by_year[year].append(disc)
 
         for year, year_disclosures in by_year.items():
-            year_file_path = os.path.join(base_dir, f"액면분할({year}년).xlsx")
+            year_file_path = os.path.join(self.output_dir, f"액면분할({year}년).xlsx")
             self._save_to_file(year_disclosures, year_file_path, sheet_name=f"주식분할결정_{year}년")
 
     def _save_to_file(self, disclosures: List[StockSplitDisclosure], target_path: str, sheet_name: str) -> None:
