@@ -141,8 +141,13 @@ class StockSplitCollectionService:
             reg_date = meta["reg_date"]
 
             if not force_refresh and rcept_no in existing_map:
+                # 기존 저장분을 final_disclosures에 넣지 않는다 - 이 리스트는 아래에서
+                # StockSplitDisclosureChain.resolve_original_dates()에 그대로 넘어가는데,
+                # 이번 실행의 relation_map에 이 rcept_no가 없으면(정정 이력 스크래핑이 이번엔
+                # 실패했거나 대상이 아닌 경우) original_reg_date가 자기 자신 날짜로 덮어써져
+                # 예전에 올바르게 계산해둔 정정 체인 정보가 손상된다. 기존 저장분은 병합 단계에서
+                # existing_disclosures를 통해 그대로 보존되므로 재처리할 필요가 없다.
                 logger.info(f"[Service] [{i}/{len(final_meta_list)}] Already stored, skipping parse: {corp_name} ({rcept_no})")
-                final_disclosures.append(existing_map[rcept_no])
                 skipped_existing += 1
                 continue
 
