@@ -1,6 +1,9 @@
+import logging
 from collections.abc import Sequence
 from ports.repository import StockSplitWriterPort
 from domain.models import StockSplitDisclosure
+
+logger = logging.getLogger(__name__)
 
 class CompositeStockSplitWriterAdapter(StockSplitWriterPort):
     """
@@ -18,4 +21,4 @@ class CompositeStockSplitWriterAdapter(StockSplitWriterPort):
                 writer.save_all(disclosures)
             except Exception as e:
                 # 개별 영속화 도중 오류가 발생해도 다른 저장 메커니즘을 훼손하지 않기 위해 로그 후 계속 진행
-                print(f"[CompositeWriter] [WARNING] Save failed on writer {writer.__class__.__name__}: {e}")
+                logger.warning(f"[CompositeWriter] Save failed on writer {writer.__class__.__name__}: {e}")

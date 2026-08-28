@@ -1,8 +1,11 @@
+import logging
 import os
 import pandas as pd
 from typing import List
 from domain.models import StockSplitDisclosure
 from ports.repository import StockSplitWriterPort
+
+logger = logging.getLogger(__name__)
 
 class LocalExcelStockSplitRepositoryAdapter(StockSplitWriterPort):
     """
@@ -22,7 +25,7 @@ class LocalExcelStockSplitRepositoryAdapter(StockSplitWriterPort):
         별도 독립 엑셀 파일로 쪼개어 프리미엄 포맷으로 저장합니다. (종합 중복 파일 제거)
         """
         if not disclosures:
-            print("[ExcelAdapter] No disclosures to save. Excel creation skipped.")
+            logger.info("[ExcelAdapter] No disclosures to save. Excel creation skipped.")
             return
 
         # 연도별 분류 및 분할 저장
@@ -95,10 +98,10 @@ class LocalExcelStockSplitRepositoryAdapter(StockSplitWriterPort):
                     
                     worksheet.column_dimensions[col_letter].width = max(max_len + 4, 12)
             
-            print(f"[ExcelAdapter] Successfully saved {len(disclosures)} disclosures to EXCEL: {target_path}")
-            
+            logger.info(f"[ExcelAdapter] Successfully saved {len(disclosures)} disclosures to EXCEL: {target_path}")
+
         except Exception as excel_err:
-            print(f"[ExcelAdapter] [ERROR] Failed to save excel file {target_path}: {excel_err}")
+            logger.error(f"[ExcelAdapter] Failed to save excel file {target_path}: {excel_err}")
             raise excel_err
 
     # Excel 리포지토리는 ISP 원칙에 따라 읽기(ReaderPort) 기능을 별도 계약하지 않아 load_all을 구현하지 않습니다.

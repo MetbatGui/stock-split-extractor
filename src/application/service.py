@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import List, Optional
 from datetime import datetime
@@ -6,6 +7,8 @@ from domain.models import CollectionRunResult, StockSplitDisclosure, StockSplitD
 from ports.scraper import StockSplitScraperPort
 from ports.parser import StockSplitParserPort
 from ports.repository import StockSplitReaderPort, StockSplitWriterPort, CloudSyncPort
+
+logger = logging.getLogger(__name__)
 
 class StockSplitCollectionService:
     """
@@ -42,27 +45,27 @@ class StockSplitCollectionService:
         영속화 저장소 및 클라우드 드라이브 동기화까지 통합 비즈니스 흐름을 오케스트레이션합니다.
         이미 DB에 저장된 접수번호는 force_refresh가 아닌 한 재파싱하지 않습니다.
         """
-        print(f"[Service] Pipeline started for period: {start_date} ~ {end_date}")
+        logger.info(f"[Service] Pipeline started for period: {start_date} ~ {end_date}")
         current_year = datetime.now().year
 
         # 1. 아웃바운드 포트를 사용하여 시작 전 구글 드라이브에서 SSOT DB 파일 스마트 대조 다운로드
         if self.sync_port and not force_refresh:
-            print("[Service] Smart sync checking on Google Drive (SSOT)...")
+            logger.info("[Service] Smart sync checking on Google Drive (SSOT)...")
             try:
                 self.sync_port.sync_down_if_newer(
                     remote_name="stock_splits.db",
                     local_path="data/stock_splits.db"
                 )
-                print("[Service] Smart sync download check completed.")
+                logger.info("[Service] Smart sync download check completed.")
             except Exception as se:
-                print(f"[Service] [WARNING] Smart sync download failed (Continuing with local): {se}")
+                logger.warning(f"[Service] Smart sync download failed (Continuing with local): {se}")
 
         # 2. 기존 데이터베이스 로드 (완료 판정 및 증분 수집/머지 지원)
         existing_disclosures: List[StockSplitDisclosure] = []
         try:
             existing_disclosures = self.reader_port.load_all()
         except Exception as e:
-            print(f"[Service] [WARNING] Failed to load existing disclosures: {e}")
+            logger.warning(f"[Service] Failed to load existing disclosures: {e}")
         existing_map = {d.rcept_no: d for d in existing_disclosures}
 
         # 3. 아웃바운드 포트를 사용하여 공시 목록 메타데이터 수집
@@ -74,14 +77,14 @@ class StockSplitCollectionService:
         )
 
         if not disclosures_meta:
-            print("[Service] No disclosures found for the specified period.")
+            logger.info("[Service] No disclosures found for the specified period.")
             return CollectionRunResult(disclosures=existing_disclosures)
 
         # 중복 방지 및 복원 적재를 위한 접수번호 기준 맵 구성
         meta_map = {m["rcept_no"]: m for m in disclosures_meta}
         relation_map = {}
 
-        print("[Service] Analyzing corrections and fetching history disclosures...")
+        logger.info("[Service] Analyzing corrections and fetching history disclosures...")
         
         # 기재정정 공시들에 대해 이전 히스토리 공시들을 자동으로 추적하여 복원 적재
         meta_list = list(disclosures_meta)
@@ -118,11 +121,11 @@ class StockSplitCollectionService:
                             "reg_date": p_reg_date
                         }
                         meta_map[hist_rcp] = restored_meta
-                        print(f"  [Service] Restored missing parent disclosure: {meta['corp_name']} ({hist_rcp}) - Date: {p_reg_date}")
+                        logger.info(f"  [Service] Restored missing parent disclosure: {meta['corp_name']} ({hist_rcp}) - Date: {p_reg_date}")
 
         # 전체 복원 완료된 공시 목록
         final_meta_list = list(meta_map.values())
-        print(f"[Service] Final disclosures to process (including restored): {len(final_meta_list)}")
+        logger.info(f"[Service] Final disclosures to process (including restored): {len(final_meta_list)}")
 
         # 4. 개별 공시 상세 내용 파싱 및 도메인 모델 생성
         #    이미 완료 저장된 접수번호는(§3 완료 판정: DB 조회) force_refresh가 아니면
@@ -138,18 +141,18 @@ class StockSplitCollectionService:
             reg_date = meta["reg_date"]
 
             if not force_refresh and rcept_no in existing_map:
-                print(f"[Service] [{i}/{len(final_meta_list)}] Already stored, skipping parse: {corp_name} ({rcept_no})")
+                logger.info(f"[Service] [{i}/{len(final_meta_list)}] Already stored, skipping parse: {corp_name} ({rcept_no})")
                 final_disclosures.append(existing_map[rcept_no])
                 skipped_existing += 1
                 continue
 
-            print(f"[Service] [{i}/{len(final_meta_list)}] Parsing detail for {corp_name} ({rcept_no})...")
+            logger.info(f"[Service] [{i}/{len(final_meta_list)}] Parsing detail for {corp_name} ({rcept_no})...")
 
             # 아웃바운드 포트를 사용하여 공시 XML 본문 분석
             try:
                 detail = self.parser_port.parse_split_info(rcept_no, force_refresh=force_refresh)
             except Exception as pe:
-                print(f"  [Service] [WARNING] Parse failed (skipped): {pe}")
+                logger.warning(f"[Service] Parse failed (skipped): {pe}")
                 failed_rcept_nos.append(rcept_no)
                 continue
 
@@ -175,13 +178,13 @@ class StockSplitCollectionService:
                 final_disclosures.append(disclosure_obj)
                 parsed_count += 1
             except Exception as ve:
-                print(f"  [Service] [WARNING] Validation error (skipped): {ve}")
+                logger.warning(f"[Service] Validation error (skipped): {ve}")
                 failed_rcept_nos.append(rcept_no)
                 continue
 
         # 4. 정정공시 간의 최초 원본 공시일 계산 및 부모-자식 관계 맵핑 설정 (도메인 Aggregate 위임)
         if final_disclosures:
-            print("[Service] Resolving original dates using domain Aggregate...")
+            logger.info("[Service] Resolving original dates using domain Aggregate...")
             chain = StockSplitDisclosureChain(disclosures=final_disclosures, relation_map=relation_map)
             chain.resolve_original_dates()
 
@@ -197,12 +200,12 @@ class StockSplitCollectionService:
 
         # 8. 아웃바운드 포트를 사용하여 복합 영속화 실행
         if merged_disclosures:
-            print(f"[Service] Saving {len(merged_disclosures)} merged disclosures (Existing: {len(existing_disclosures)}, Parsed: {parsed_count}, Skipped: {skipped_existing})...")
+            logger.info(f"[Service] Saving {len(merged_disclosures)} merged disclosures (Existing: {len(existing_disclosures)}, Parsed: {parsed_count}, Skipped: {skipped_existing})...")
             self.writer_port.save_all(merged_disclosures)
 
             # 9. 아웃바운드 포트를 사용하여 구글 드라이브 클라우드 동기화 업로드 기동
             if self.sync_port:
-                print("[Service] Commencing smart sync upload to Google Drive...")
+                logger.info("[Service] Commencing smart sync upload to Google Drive...")
                 try:
                     # (1) SSOT DB 파일과 로컬에 동적으로 생성된 연도별 엑셀 파일 클라우드 업로드
                     sync_targets = [
@@ -219,13 +222,13 @@ class StockSplitCollectionService:
                                 remote_name=remote_name,
                                 mime_type=mime_type
                             )
-                    print("[Service] Google Drive cloud sync completely succeeded!")
+                    logger.info("[Service] Google Drive cloud sync completely succeeded!")
                 except Exception as sync_err:
-                    print(f"[Service] [ERROR] Cloud sync failed: {sync_err}")
+                    logger.error(f"[Service] Cloud sync failed: {sync_err}")
 
-            print("[Service] Pipeline successfully completed!")
+            logger.info("[Service] Pipeline successfully completed!")
         else:
-            print("[Service] No disclosures to save.")
+            logger.info("[Service] No disclosures to save.")
 
         return CollectionRunResult(
             disclosures=merged_disclosures,

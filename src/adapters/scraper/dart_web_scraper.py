@@ -1,3 +1,4 @@
+import logging
 import re
 import time
 import random
@@ -5,6 +6,8 @@ from typing import List, Dict, Any
 import requests
 from bs4 import BeautifulSoup
 from ports.scraper import StockSplitScraperPort
+
+logger = logging.getLogger(__name__)
 
 class DartWebScraperAdapter(StockSplitScraperPort):
     """
@@ -49,7 +52,7 @@ class DartWebScraperAdapter(StockSplitScraperPort):
         start_date_clean = start_date.replace(".", "").replace("-", "")
         end_date_clean = end_date.replace(".", "").replace("-", "")
 
-        print(f"[ScraperAdapter] Scraping DART disclosures for '{keyword}'...")
+        logger.info(f"[ScraperAdapter] Scraping DART disclosures for '{keyword}'...")
 
         while True:
             payload = {
@@ -145,7 +148,7 @@ class DartWebScraperAdapter(StockSplitScraperPort):
                     "reg_date": reg_date
                 })
 
-            print(f"[ScraperAdapter] Page {page}: Scanned {page_results_count} items, collected {len(all_disclosures)} items.")
+            logger.info(f"[ScraperAdapter] Page {page}: Scanned {page_results_count} items, collected {len(all_disclosures)} items.")
 
             # 가져온 총 결과 행 수가 요청 최대 개수(max_results)보다 작다면 마지막 페이지
             if page_results_count < max_results:
@@ -153,7 +156,7 @@ class DartWebScraperAdapter(StockSplitScraperPort):
                 
             page += 1
 
-        print(f"[ScraperAdapter] Scraping finished. Total: {len(all_disclosures)} items.")
+        logger.info(f"[ScraperAdapter] Scraping finished. Total: {len(all_disclosures)} items.")
         return all_disclosures
 
     def get_history_rcp_list(self, rcp_no: str) -> List[str]:
@@ -207,5 +210,5 @@ class DartWebScraperAdapter(StockSplitScraperPort):
             return sorted(list(found_ids))
             
         except Exception as e:
-            print(f"[ScraperAdapter] [ERROR] Failed to get history for rcp_no {rcp_no}: {e}")
+            logger.error(f"[ScraperAdapter] Failed to get history for rcp_no {rcp_no}: {e}")
             return [rcp_no]

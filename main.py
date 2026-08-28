@@ -1,7 +1,10 @@
 import argparse
+import logging
 from datetime import datetime, timedelta
 import sys
 import os
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 # src 디렉토리를 검색 경로 최상단에 확보
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
