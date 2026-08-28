@@ -20,7 +20,7 @@ class AppConfig(BaseModel):
     cache_dir: Path = Path("cache")
 
     # 상세 파일 경로
-    json_file_path: Path = Path("data/stock_splits_manifest.json")
+    db_path: Path = Path("data/stock_splits.db")
     client_secret_path: Path = Path("secrets/client_secret.json")
     token_path: Path = Path("secrets/token.json")
 

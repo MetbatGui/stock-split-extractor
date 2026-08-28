@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import zipfile
@@ -6,6 +7,8 @@ from typing import Dict, Any
 import requests
 from bs4 import BeautifulSoup
 from ports.parser import StockSplitParserPort
+
+logger = logging.getLogger(__name__)
 
 class OpenDartXmlParserAdapter(StockSplitParserPort):
     """
@@ -83,7 +86,7 @@ class OpenDartXmlParserAdapter(StockSplitParserPort):
         try:
             xml_content = self._get_xml_content(rcept_no, force_refresh=force_refresh)
         except Exception as e:
-            print(f"[ParserAdapter] Error fetching document {rcept_no}: {e}")
+            logger.error(f"[ParserAdapter] Error fetching document {rcept_no}: {e}")
             return result
 
         soup = BeautifulSoup(xml_content, "html.parser")

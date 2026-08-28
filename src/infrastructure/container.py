@@ -4,7 +4,7 @@ from typing import Optional
 from infrastructure.config import AppConfig
 from adapters.scraper.dart_web_scraper import DartWebScraperAdapter
 from adapters.parser.opendart_xml_parser import OpenDartXmlParserAdapter
-from adapters.repository.local_json_repository import LocalJsonStockSplitRepositoryAdapter
+from adapters.repository.sqlite_repository import SqliteStockSplitRepositoryAdapter
 from adapters.repository.local_excel_repository import LocalExcelStockSplitRepositoryAdapter
 from adapters.repository.google_drive_repository import GoogleDriveStockSplitRepositoryAdapter
 from adapters.repository.composite_repository import CompositeStockSplitWriterAdapter
@@ -27,8 +27,8 @@ class Container:
         # 3. 인프라 어댑터 싱글톤 구성
         self._scraper_adapter = DartWebScraperAdapter()
         self._parser_adapter = OpenDartXmlParserAdapter(cache_dir=str(self._config.cache_dir))
-        self._local_json_repository = LocalJsonStockSplitRepositoryAdapter(
-            file_path=str(self._config.json_file_path)
+        self._sqlite_repository = SqliteStockSplitRepositoryAdapter(
+            db_path=str(self._config.db_path)
         )
         self._local_excel_repository = LocalExcelStockSplitRepositoryAdapter(
             output_dir=str(self._config.data_dir)
@@ -38,17 +38,15 @@ class Container:
         self._gdrive_repository: Optional[GoogleDriveStockSplitRepositoryAdapter] = None
         self._init_gdrive_repository()
 
-        # 5. Composite Writer 구성 (다중 영속화 캡슐화)
-        writers = [self._local_json_repository, self._local_excel_repository]
-        if self._gdrive_repository:
-            writers.append(self._gdrive_repository)
+        # 5. Composite Writer 구성 (다중 영속화 캡슐화) - SQLite가 SSOT, Excel은 파생 산출물
+        writers = [self._sqlite_repository, self._local_excel_repository]
         self._composite_writer = CompositeStockSplitWriterAdapter(writers=writers)
 
         # 6. 비즈니스 서비스 구성 (의존성 결합)
         self._collection_service = StockSplitCollectionService(
             scraper_port=self._scraper_adapter,
             parser_port=self._parser_adapter,
-            reader_port=self._local_json_repository,
+            reader_port=self._sqlite_repository,
             writer_port=self._composite_writer,
             sync_port=self._gdrive_repository
         )
@@ -69,7 +67,6 @@ class Container:
         try:
             self._gdrive_repository = GoogleDriveStockSplitRepositoryAdapter(
                 folder_id=self._config.google_stock_split_folder_id,
-                file_name=self._config.json_file_path.name,
                 credentials_path=str(self._config.client_secret_path),
                 token_path=str(self._config.token_path)
             )

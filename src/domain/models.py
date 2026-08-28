@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 from typing import Optional, Dict, List
 from pydantic import BaseModel, Field, field_validator
 import re
@@ -147,5 +148,16 @@ class StockSplitDisclosureChain(BaseModel):
                     break
             
             disc.original_reg_date = root_reg_date
+
+
+@dataclass
+class CollectionRunResult:
+    """한 번의 수집 파이프라인 실행 결과를 담는 값 객체 (오케스트레이션 흐름의 반환값)."""
+
+    disclosures: List[StockSplitDisclosure] = field(default_factory=list)
+    discovered: int = 0
+    skipped_existing: int = 0
+    parsed: int = 0
+    failed_rcept_nos: List[str] = field(default_factory=list)
 
 
