@@ -11,8 +11,13 @@ docker-build:
 docker-deploy:
     docker compose -f docker/docker-compose.yml up -d extractor-cron
 
-# docker-build -> docker-deploy -> release를 순서대로 한 번에 실행
-ship: docker-build docker-deploy release
+# 현재 브랜치가 main/master일 때만 origin push - ship은 "안정화된 main 배포"가 목적이라
+# feature 브랜치에서 실수로 배포/릴리즈되는 걸 막는다.
+push-main:
+    $branch = git rev-parse --abbrev-ref HEAD; if ($branch -ne 'main' -and $branch -ne 'master') { Write-Error "Refusing to push: current branch is '$branch', not main/master"; exit 1 }; git push origin $branch
+
+# push-main -> docker-build -> docker-deploy -> release를 순서대로 한 번에 실행
+ship: push-main docker-build docker-deploy release
 
 setup-release:
     git checkout master
