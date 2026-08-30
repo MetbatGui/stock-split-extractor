@@ -1,5 +1,6 @@
 import sys
 import os
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
@@ -177,3 +178,43 @@ def test_skipped_disclosure_keeps_its_previously_resolved_original_reg_date():
     saved = {d.rcept_no: d for d in result.disclosures}
     assert saved[child_rcept_no].original_reg_date == "2026.01.05"
     assert saved[child_rcept_no].parent_rcept_no == parent_rcept_no
+
+
+class FailingSyncPort:
+    def sync_down_if_newer(self, remote_name, local_path):
+        return False
+
+    def sync_up_file(self, local_path, remote_name, mime_type):
+        raise RuntimeError("simulated Drive upload failure")
+
+
+def test_result_reports_sync_up_failed_when_drive_upload_raises():
+    """Drive 업로드가 실패하면 CollectionRunResult.sync_up_failed가 True여야 한다 -
+    호출부(main.py)가 이걸로 exit code를 결정해 업로드 실패를 조용히 넘기지 않게 한다."""
+    new_rcept_no = "20260110000002"
+    scraper = FakeScraperPort(
+        metas=[
+            {
+                "corp_name": "신규회사",
+                "report_nm": "주식분할결정",
+                "rcept_no": new_rcept_no,
+                "presenter": "신규회사",
+                "reg_date": "2026.01.10",
+            }
+        ]
+    )
+    parser = FakeParserPort()
+    repo = FakeReaderWriterPort(existing=[])
+
+    service = StockSplitCollectionService(
+        scraper_port=scraper,
+        parser_port=parser,
+        reader_port=repo,
+        writer_port=repo,
+        sync_port=FailingSyncPort(),
+    )
+
+    with patch("application.service.os.path.exists", return_value=True):
+        result = service.collect_splits_for_period(start_date="20260101", end_date="20260131")
+
+    assert result.sync_up_failed is True

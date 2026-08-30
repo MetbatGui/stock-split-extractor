@@ -161,22 +161,24 @@ class GoogleDriveStockSplitRepositoryAdapter(CloudSyncPort):
     # 구글 드라이브 어댑터는 ISP 원칙에 따라 읽기(ReaderPort) 기능을 별도 계약하지 않아 load_all을 강제 구현하지 않습니다.
 
     def _get_file_metadata(self, file_name: str) -> Optional[dict]:
-        """지정한 폴더 내에 동일한 이름을 가진 파일의 메타데이터(id, modifiedTime)를 조회합니다."""
+        """지정한 폴더 내에 동일한 이름을 가진 파일의 메타데이터(id, modifiedTime)를 조회합니다.
+
+        None은 "원격에 파일이 없음"만을 뜻한다. 조회 자체가 실패하면(인증 오류, 네트워크
+        오류 등) 예외를 그대로 전파한다 - 여기서 삼켜서 None을 반환하면 "없음"과 "조회
+        실패"를 호출부가 구분할 수 없게 되어, 인증이 통째로 죽어도 "최초 설치"와 똑같이
+        취급되는 사고가 난다(db_ssot_guide.md §6.1).
+        """
         escaped_name = file_name.replace("'", "\\'")
         query = f"name='{escaped_name}' and '{self.folder_id}' in parents and trashed=false"
-        
-        try:
-            results = self.service.files().list(
-                q=query,
-                fields="files(id, name, modifiedTime)",
-                pageSize=1
-            ).execute()
-            
-            files = results.get('files', [])
-            return files[0] if files else None
-        except Exception as e:
-            self.logger.warning(f"[GDriveRepo] Query error during file metadata search: {e}")
-            return None
+
+        results = self.service.files().list(
+            q=query,
+            fields="files(id, name, modifiedTime)",
+            pageSize=1
+        ).execute()
+
+        files = results.get('files', [])
+        return files[0] if files else None
 
     def sync_down_if_newer(self, remote_name: str, local_path: str) -> bool:
         """

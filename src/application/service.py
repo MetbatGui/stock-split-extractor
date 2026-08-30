@@ -204,6 +204,7 @@ class StockSplitCollectionService:
         merged_disclosures.sort(key=lambda x: (x.reg_date or "", x.corp_name or ""), reverse=True)
 
         # 8. 아웃바운드 포트를 사용하여 복합 영속화 실행
+        sync_up_failed = False
         if merged_disclosures:
             logger.info(f"[Service] Saving {len(merged_disclosures)} merged disclosures (Existing: {len(existing_disclosures)}, Parsed: {parsed_count}, Skipped: {skipped_existing})...")
             self.writer_port.save_all(merged_disclosures)
@@ -230,6 +231,7 @@ class StockSplitCollectionService:
                     logger.info("[Service] Google Drive cloud sync completely succeeded!")
                 except Exception as sync_err:
                     logger.error(f"[Service] Cloud sync failed: {sync_err}")
+                    sync_up_failed = True
 
             logger.info("[Service] Pipeline successfully completed!")
         else:
@@ -241,5 +243,6 @@ class StockSplitCollectionService:
             skipped_existing=skipped_existing,
             parsed=parsed_count,
             failed_rcept_nos=failed_rcept_nos,
+            sync_up_failed=sync_up_failed,
         )
 

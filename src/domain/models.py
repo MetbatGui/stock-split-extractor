@@ -159,5 +159,10 @@ class CollectionRunResult:
     skipped_existing: int = 0
     parsed: int = 0
     failed_rcept_nos: List[str] = field(default_factory=list)
+    # Drive 업로드 실패 여부. True면 호출부는 exit code를 0이 아닌 값으로 끝내야 한다 -
+    # sync_down_if_newer가 mtime 비교로 로컬 신뢰 여부를 결정하므로, 업로드 실패를
+    # 조용히 넘기면 다음 실행이 이번에 계산한 최신 데이터를 못 보고 낡은 원격 사본으로
+    # 되돌아갈 수 있다.
+    sync_up_failed: bool = False
 
 

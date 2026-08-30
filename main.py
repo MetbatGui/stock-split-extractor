@@ -47,14 +47,26 @@ def main() -> None:
     collection_service = container.collection_service
 
     # 3. 파이프라인 통합 가동 (단 1회 호출로 오케스트레이션 수행)
-    result = collection_service.collect_splits_for_period(
-        start_date=start_date,
-        end_date=end_date,
-        keyword="주식분할결정",
-        exclude_corrections=False,
-        force_refresh=force_refresh
-    )
+    try:
+        result = collection_service.collect_splits_for_period(
+            start_date=start_date,
+            end_date=end_date,
+            keyword="주식분할결정",
+            exclude_corrections=False,
+            force_refresh=force_refresh
+        )
+    except Exception as e:
+        logging.error(f"[Main] Pipeline failed with an unhandled exception: {e}", exc_info=True)
+        sys.exit(1)
+
     final_disclosures = result.disclosures
+
+    if result.sync_up_failed:
+        # 로컬은 항상 불신의 대상이라(db_ssot_guide.md §6.1/§6.2) 다음 실행이 mtime 비교로
+        # Drive를 신뢰할지 판단한다. 업로드 실패를 조용히 넘기면 이번에 계산한 최신 데이터가
+        # 다음 실행에서 낡은 원격 사본에 가려질 수 있다 - exit code로 사람이 즉시 알아채게 한다.
+        logging.error("[Main] Google Drive 업로드 실패 - 다음 실행 전에 재시도 필요")
+        sys.exit(1)
 
     # 4. 최종 수집 리포트 터미널 출력
     print("\n" + "=" * 60)
