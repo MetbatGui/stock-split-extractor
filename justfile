@@ -11,6 +11,9 @@ docker-build:
 docker-deploy:
     docker compose -f docker/docker-compose.yml up -d extractor-cron
 
+# docker-build -> docker-deploy -> release를 순서대로 한 번에 실행
+ship: docker-build docker-deploy release
+
 setup-release:
     git checkout master
     git remote add employers-stock-split-extractor https://github.com/guruta71/stock-split-extractor.git
