@@ -1,13 +1,15 @@
 # Use PowerShell on Windows
 set shell := ["powershell", "-c"]
 
-# 도커 이미지 빌드
-build:
+# 도커 이미지 빌드 (CI가 build -> deploy -> release를 독립 호출할 수 있도록 이름을
+# 표준화함 - handoff_guide.md §2 참고)
+docker-build:
     docker compose -f docker/docker-compose.yml build
 
-# 컨테이너 내장 cron 서비스를 백그라운드로 기동 (스케줄: docker/crontab)
-cron-up:
-    docker compose -f docker/docker-compose.yml up -d --build extractor-cron
+# 컨테이너 내장 cron 서비스를 백그라운드로 기동 (스케줄: docker/crontab).
+# 재빌드는 하지 않음 - docker-build를 먼저 실행할 것.
+docker-deploy:
+    docker compose -f docker/docker-compose.yml up -d extractor-cron
 
 setup-release:
     git checkout master
