@@ -100,22 +100,24 @@ class GoogleDriveStockSplitRepositoryAdapter(CloudSyncPort):
         return build('drive', 'v3', credentials=creds)
 
     def _find_file_by_name(self, file_name: str) -> Optional[str]:
-        """지정한 폴더 내에 동일한 이름을 가진 파일의 ID를 조회합니다."""
+        """지정한 폴더 내에 동일한 이름을 가진 파일의 ID를 조회합니다.
+
+        None은 "동일 이름 파일이 없음"만을 뜻한다. 조회 자체가 실패하면 예외를 그대로
+        전파한다 - 여기서 삼켜서 None을 반환하면 sync_up_file()이 "기존 파일 없음"으로
+        오인해 덮어쓰기 대신 중복 파일을 새로 생성한다(db_ssot_guide.md §6.1과 같은
+        "없음"과 "조회 실패" 혼동 패턴).
+        """
         escaped_name = file_name.replace("'", "\\'")
         query = f"name='{escaped_name}' and '{self.folder_id}' in parents and trashed=false"
-        
-        try:
-            results = self.service.files().list(
-                q=query,
-                fields="files(id, name)",
-                pageSize=1
-            ).execute()
-            
-            files = results.get('files', [])
-            return files[0]['id'] if files else None
-        except Exception as e:
-            self.logger.warning(f"[GDriveRepo] Query error during file name search: {e}")
-            return None
+
+        results = self.service.files().list(
+            q=query,
+            fields="files(id, name)",
+            pageSize=1
+        ).execute()
+
+        files = results.get('files', [])
+        return files[0]['id'] if files else None
 
     def sync_up_file(self, local_path: str, remote_name: str, mime_type: str) -> None:
         """

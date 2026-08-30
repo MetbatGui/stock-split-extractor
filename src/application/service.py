@@ -212,26 +212,36 @@ class StockSplitCollectionService:
             # 9. 아웃바운드 포트를 사용하여 구글 드라이브 클라우드 동기화 업로드 기동
             if self.sync_port:
                 logger.info("[Service] Commencing smart sync upload to Google Drive...")
-                try:
-                    # (1) SSOT DB 파일과 로컬에 동적으로 생성된 연도별 엑셀 파일 클라우드 업로드
-                    sync_targets = [
-                        ("data/stock_splits.db", "stock_splits.db", "application/x-sqlite3"),
-                        (f"data/액면분할({current_year}년).xlsx", f"액면분할({current_year}년).xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
-                        (f"data/액면분할({current_year - 1}년).xlsx", f"액면분할({current_year - 1}년).xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
-                        (f"data/액면분할({current_year - 2}년).xlsx", f"액면분할({current_year - 2}년).xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                    ]
+                # 사람이 바로 확인 가능한 산출물(엑셀) 먼저, DB는 나중 (db_ssot_guide.md §3) -
+                # 산출물 업로드가 실패해도 최소한 사람이 볼 결과는 최신인 상태를 우선시.
+                sync_targets = [
+                    (f"data/액면분할({current_year}년).xlsx", f"액면분할({current_year}년).xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+                    (f"data/액면분할({current_year - 1}년).xlsx", f"액면분할({current_year - 1}년).xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+                    (f"data/액면분할({current_year - 2}년).xlsx", f"액면분할({current_year - 2}년).xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+                    ("data/stock_splits.db", "stock_splits.db", "application/x-sqlite3"),
+                ]
 
-                    for local_path, remote_name, mime_type in sync_targets:
-                        if os.path.exists(local_path):
-                            self.sync_port.sync_up_file(
-                                local_path=local_path,
-                                remote_name=remote_name,
-                                mime_type=mime_type
-                            )
+                # 각 파일 업로드를 독립적으로 시도한다 - 하나가 실패해도(sync_up_file이
+                # 예외를 던짐) 나머지 파일 업로드를 계속 시도해야 한다. 예전엔 for 루프
+                # 전체를 하나의 try로 묶어서, 첫 파일(DB) 실패가 나머지 엑셀 업로드
+                # 시도 자체를 막았다.
+                for local_path, remote_name, mime_type in sync_targets:
+                    if not os.path.exists(local_path):
+                        continue
+                    try:
+                        self.sync_port.sync_up_file(
+                            local_path=local_path,
+                            remote_name=remote_name,
+                            mime_type=mime_type
+                        )
+                    except Exception as sync_err:
+                        logger.error(f"[Service] Cloud sync failed for '{remote_name}': {sync_err}")
+                        sync_up_failed = True
+
+                if sync_up_failed:
+                    logger.error("[Service] Google Drive cloud sync completed with failures.")
+                else:
                     logger.info("[Service] Google Drive cloud sync completely succeeded!")
-                except Exception as sync_err:
-                    logger.error(f"[Service] Cloud sync failed: {sync_err}")
-                    sync_up_failed = True
 
             logger.info("[Service] Pipeline successfully completed!")
         else:

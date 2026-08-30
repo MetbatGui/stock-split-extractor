@@ -218,3 +218,88 @@ def test_result_reports_sync_up_failed_when_drive_upload_raises():
         result = service.collect_splits_for_period(start_date="20260101", end_date="20260131")
 
     assert result.sync_up_failed is True
+
+
+class PartiallyFailingSyncPort:
+    """특정 remote_name 하나만 실패하고, 나머지는 시도돼야 한다는 걸 검증하기 위한 스텁."""
+
+    def __init__(self, fail_remote_name):
+        self._fail_remote_name = fail_remote_name
+        self.attempted = []
+
+    def sync_down_if_newer(self, remote_name, local_path):
+        return False
+
+    def sync_up_file(self, local_path, remote_name, mime_type):
+        self.attempted.append(remote_name)
+        if remote_name == self._fail_remote_name:
+            raise RuntimeError(f"simulated failure for {remote_name}")
+
+
+def test_one_failed_upload_does_not_block_remaining_uploads():
+    """업로드 대상 하나가 실패해도 나머지 파일들은 계속 시도돼야 한다 - 예전엔 for 루프
+    전체가 하나의 try에 묶여서 첫 실패가 나머지 업로드 시도 자체를 막았다."""
+    new_rcept_no = "20260110000002"
+    scraper = FakeScraperPort(
+        metas=[
+            {
+                "corp_name": "신규회사",
+                "report_nm": "주식분할결정",
+                "rcept_no": new_rcept_no,
+                "presenter": "신규회사",
+                "reg_date": "2026.01.10",
+            }
+        ]
+    )
+    parser = FakeParserPort()
+    repo = FakeReaderWriterPort(existing=[])
+    sync_port = PartiallyFailingSyncPort(fail_remote_name="stock_splits.db")
+
+    service = StockSplitCollectionService(
+        scraper_port=scraper,
+        parser_port=parser,
+        reader_port=repo,
+        writer_port=repo,
+        sync_port=sync_port,
+    )
+
+    with patch("application.service.os.path.exists", return_value=True):
+        result = service.collect_splits_for_period(start_date="20260101", end_date="20260131")
+
+    assert result.sync_up_failed is True
+    # DB 업로드가 실패해도 엑셀 3개는 전부 시도됐어야 한다 (총 4개 대상)
+    assert len(sync_port.attempted) == 4
+    assert "stock_splits.db" in sync_port.attempted
+
+
+def test_excel_uploads_are_attempted_before_db_upload():
+    """산출물(엑셀)이 DB보다 먼저 업로드돼야 한다 (db_ssot_guide.md §3)."""
+    new_rcept_no = "20260110000002"
+    scraper = FakeScraperPort(
+        metas=[
+            {
+                "corp_name": "신규회사",
+                "report_nm": "주식분할결정",
+                "rcept_no": new_rcept_no,
+                "presenter": "신규회사",
+                "reg_date": "2026.01.10",
+            }
+        ]
+    )
+    parser = FakeParserPort()
+    repo = FakeReaderWriterPort(existing=[])
+    sync_port = PartiallyFailingSyncPort(fail_remote_name="__never__")
+
+    service = StockSplitCollectionService(
+        scraper_port=scraper,
+        parser_port=parser,
+        reader_port=repo,
+        writer_port=repo,
+        sync_port=sync_port,
+    )
+
+    with patch("application.service.os.path.exists", return_value=True):
+        service.collect_splits_for_period(start_date="20260101", end_date="20260131")
+
+    assert sync_port.attempted[-1] == "stock_splits.db"
+    assert all(name.endswith(".xlsx") for name in sync_port.attempted[:-1])

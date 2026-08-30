@@ -37,3 +37,25 @@ def test_sync_down_if_newer_propagates_metadata_query_failure_instead_of_swallow
         assert False, "예외가 전파돼야 한다"
     except RuntimeError:
         pass
+
+
+def test_find_file_by_name_returns_none_when_no_match():
+    fake_service = MagicMock()
+    fake_service.files.return_value.list.return_value.execute.return_value = {"files": []}
+    adapter = _adapter_with_fake_service(fake_service)
+
+    assert adapter._find_file_by_name("stock_splits.db") is None
+
+
+def test_find_file_by_name_propagates_query_failure_instead_of_treating_as_missing():
+    """조회 실패를 "파일 없음"으로 삼키면 sync_up_file()이 덮어쓰기 대신 중복 파일을
+    새로 만든다 - 예외를 그대로 전파해야 한다."""
+    fake_service = MagicMock()
+    fake_service.files.return_value.list.return_value.execute.side_effect = RuntimeError("auth failed")
+    adapter = _adapter_with_fake_service(fake_service)
+
+    try:
+        adapter._find_file_by_name("stock_splits.db")
+        assert False, "예외가 전파돼야 한다"
+    except RuntimeError:
+        pass
